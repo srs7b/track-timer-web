@@ -27660,8 +27660,8 @@ if(s.gbK(s))return A.aWS(J.jh(s.geK()))}return null},
 a7D(a){if(a)return new A.acA(A.c([new A.rV()],t.v0))
 else return new A.rV()},
 aLO(a,b){var s,r,q,p,o=A.c([],t.t),n=B.c.aM(1000/b)
-for(s=a.length,r=-1000,q=0;q<s;++q)if(a[q]>2.5){p=q*n
-if(p-r>=1000){o.push(p)
+for(s=a.length,r=-300,q=0;q<s;++q)if(a[q]>2.5){p=q*n
+if(p-r>=300){o.push(p)
 r=p}}return o}},B={}
 var w=[A,J,B]
 var $={}
