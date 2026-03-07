@@ -10,7 +10,7 @@ class DataProcessingService {
     List<double> voltages, {
     int sampleRateHz = 100,
     double threshold = 2.5,
-    int minPeakDistanceMs = 1000,
+    int minPeakDistanceMs = 300,
   }) {
     List<int> peakOffsetsMs = [];
     int sampleDurationMs = (1000 / sampleRateHz).round();
