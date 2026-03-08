@@ -12,6 +12,7 @@ void main() {
       // 5 gates = 4 segments (25m each)
       gateTimeOffsets: [0, 2500, 5000, 7500, 10000],
       userId: 'test_user',
+      distanceClass: 100,
     );
 
     // Splits: 0, 2.5s, 2.5s, 2.5s, 2.5s

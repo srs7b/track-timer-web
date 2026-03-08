@@ -139,6 +139,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: newName,
         createdDate: DateTime.now(),
+        gender: 'Unknown',
       );
       await _db.saveUser(newUser);
       _loadData(); // Re-fetch all mapping stats
@@ -263,6 +264,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
               ),
             ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'users_list_fab',
         onPressed: _addUser,
         child: const Icon(Icons.person_add),
       ),

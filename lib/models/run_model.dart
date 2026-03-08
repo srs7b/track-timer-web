@@ -7,7 +7,8 @@ class Run {
   final List<double> voltageData;
   final List<int> gateTimeOffsets; // ms from start
   final List<double> nodeDistances; // distances between successive gates (m)
-  final String userId;
+  final String? userId; // Null if unassigned
+  final int distanceClass; // 100, 200, 400
   final String? notes;
 
   Run({
@@ -17,7 +18,8 @@ class Run {
     required this.nodeDistances,
     required this.voltageData,
     required this.gateTimeOffsets,
-    required this.userId,
+    this.userId,
+    required this.distanceClass,
     this.notes,
   });
 
@@ -30,6 +32,7 @@ class Run {
       'voltageData': jsonEncode(voltageData),
       'gateTimeOffsets': jsonEncode(gateTimeOffsets),
       'userId': userId,
+      'distanceClass': distanceClass,
       'notes': notes,
     };
   }
@@ -60,7 +63,8 @@ class Run {
       gateTimeOffsets: List<int>.from(
         jsonDecode(map['gateTimeOffsets']).map((x) => x.toInt()),
       ),
-      userId: map['userId'] ?? 'default_user',
+      userId: map['userId'],
+      distanceClass: map['distanceClass'] ?? 100,
       notes: map['notes'],
     );
   }
@@ -93,6 +97,17 @@ class Run {
       cumulative.add((gateTimeOffsets[i] - gateTimeOffsets[0]) / 1000.0);
     }
     return cumulative;
+  }
+
+  List<double> get positionProfile {
+    // Starts at 0.0, adds node distances progressively
+    List<double> positions = [0.0];
+    double currentPosition = 0.0;
+    for (int i = 0; i < nodeDistances.length; i++) {
+      currentPosition += nodeDistances[i];
+      positions.add(currentPosition);
+    }
+    return positions;
   }
 
   List<double> get segmentVelocities {

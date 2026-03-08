@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../models/run_model.dart';
+import '../models/user_model.dart';
 import '../services/database_service.dart';
 import 'edit_peaks_screen.dart';
 
@@ -16,11 +17,32 @@ class RunDetailsScreen extends StatefulWidget {
 
 class _RunDetailsScreenState extends State<RunDetailsScreen> {
   late Run _run;
+  final PageController _pageController = PageController();
+
+  List<User> _users = [];
+  bool _isLoadingUsers = true;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     _run = widget.run;
+    _loadUsers();
+  }
+
+  Future<void> _loadUsers() async {
+    final users = await DatabaseService().getAllUsers();
+    if (mounted) {
+      setState(() {
+        _users = users;
+        _isLoadingUsers = false;
+      });
+    }
   }
 
   Future<void> _editName() async {
@@ -58,6 +80,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
         voltageData: _run.voltageData,
         gateTimeOffsets: _run.gateTimeOffsets,
         userId: _run.userId,
+        distanceClass: _run.distanceClass,
         notes: _run.notes,
       );
       await DatabaseService().saveRun(updatedRun);
@@ -126,6 +149,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
         voltageData: _run.voltageData,
         gateTimeOffsets: _run.gateTimeOffsets,
         userId: _run.userId,
+        distanceClass: _run.distanceClass,
         notes: _run.notes,
       );
 
@@ -142,10 +166,14 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
     final accels = _run.segmentAccelerations;
     final times = _run.cumulativeTimeSeconds;
 
+    final positions = _run.positionProfile;
+
     // Create spots matching time to velocities and accelerations
+    List<FlSpot> posSpots = [];
     List<FlSpot> velSpots = [];
     List<FlSpot> accelSpots = [];
     for (int i = 0; i < times.length; i++) {
+      if (i < positions.length) posSpots.add(FlSpot(times[i], positions[i]));
       if (i < vels.length) velSpots.add(FlSpot(times[i], vels[i]));
       if (i < accels.length) accelSpots.add(FlSpot(times[i], accels[i]));
     }
@@ -209,27 +237,44 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
                 ),
               ),
             _buildSummaryCard(),
-            const SizedBox(height: 30),
-            Text(
-              'Velocity Profile (m/s)',
-              style: Theme.of(context).textTheme.titleLarge,
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 400,
+              child: PageView(
+                controller: _pageController,
+                children: [
+                  _buildChartCard(
+                    'Position Profile',
+                    posSpots,
+                    Colors.green,
+                    'm',
+                  ),
+                  _buildChartCard(
+                    'Velocity Profile',
+                    velSpots,
+                    Colors.blueAccent,
+                    'm/s',
+                  ),
+                  _buildChartCard(
+                    'Acceleration Profile',
+                    accelSpots,
+                    Colors.orangeAccent,
+                    'm/s²',
+                  ),
+                  _buildRawDataCard('Raw Voltage Data', _run.voltageData),
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            _buildChart(velSpots, Colors.blueAccent),
-            const SizedBox(height: 30),
-            Text(
-              'Acceleration Profile (m/s²)',
-              style: Theme.of(context).textTheme.titleLarge,
+            const SizedBox(height: 12),
+            const Center(
+              child: Text(
+                'Swipe for more graphs →',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
-            const SizedBox(height: 10),
-            _buildChart(accelSpots, Colors.orangeAccent),
-            const SizedBox(height: 30),
-            Text(
-              'Raw Voltage Data',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 10),
-            _buildRawDataChart(_run.voltageData),
             const SizedBox(height: 40),
           ],
         ),
@@ -245,6 +290,93 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_isLoadingUsers)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      decoration: const InputDecoration(labelText: 'Athlete'),
+                      initialValue: _run.userId,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Unassigned'),
+                        ),
+                        ..._users.map(
+                          (u) => DropdownMenuItem(
+                            value: u.id,
+                            child: Text(u.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (val) async {
+                        final updatedRun = Run(
+                          id: _run.id,
+                          name: _run.name,
+                          timestamp: _run.timestamp,
+                          nodeDistances: _run.nodeDistances,
+                          voltageData: _run.voltageData,
+                          gateTimeOffsets: _run.gateTimeOffsets,
+                          userId: val,
+                          distanceClass: _run.distanceClass,
+                          notes: _run.notes,
+                        );
+                        await DatabaseService().saveRun(updatedRun);
+                        if (mounted) setState(() => _run = updatedRun);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      decoration: const InputDecoration(labelText: 'Distance'),
+                      initialValue: _run.distanceClass,
+                      items: const [
+                        DropdownMenuItem(value: 100, child: Text('100m')),
+                        DropdownMenuItem(value: 200, child: Text('200m')),
+                        DropdownMenuItem(value: 400, child: Text('400m')),
+                      ],
+                      onChanged: (val) async {
+                        if (val == null) return;
+
+                        double totalDistance = _run.nodeDistances.fold(
+                          0.0,
+                          (sum, d) => sum + d,
+                        );
+                        if ((totalDistance - val).abs() > 10.0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Warning: Run node distances sum to ${totalDistance}m, which relates poorly to the ${val}m class.',
+                              ),
+                              backgroundColor: Colors.orange,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        }
+
+                        final updatedRun = Run(
+                          id: _run.id,
+                          name: _run.name,
+                          timestamp: _run.timestamp,
+                          nodeDistances: _run.nodeDistances,
+                          voltageData: _run.voltageData,
+                          gateTimeOffsets: _run.gateTimeOffsets,
+                          userId: _run.userId,
+                          distanceClass: val,
+                          notes: _run.notes,
+                        );
+                        await DatabaseService().saveRun(updatedRun);
+                        if (mounted) setState(() => _run = updatedRun);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
             Text('Date: ${DateFormat.yMMMd().add_jm().format(_run.timestamp)}'),
             Row(
               children: [
@@ -272,7 +404,56 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
     );
   }
 
-  Widget _buildChart(List<FlSpot> spots, Color lineColor) {
+  Widget _buildChartCard(
+    String title,
+    List<FlSpot> spots,
+    Color lineColor,
+    String unit,
+  ) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Expanded(child: _buildChart(spots, lineColor, unit)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRawDataCard(String title, List<double> voltages) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Expanded(child: _buildRawDataChart(voltages)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChart(List<FlSpot> spots, Color lineColor, String unit) {
     if (spots.isEmpty) {
       return const SizedBox(
         height: 200,
@@ -300,6 +481,21 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
       width: double.infinity,
       child: LineChart(
         LineChartData(
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (touchedSpots) {
+                return touchedSpots.map((LineBarSpot touchedSpot) {
+                  return LineTooltipItem(
+                    'Time: ${touchedSpot.x.toStringAsFixed(2)}s\nValue: ${touchedSpot.y.toStringAsFixed(2)} $unit',
+                    const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                }).toList();
+              },
+            ),
+          ),
           minX: 0,
           maxX: maxX,
           minY: minY,
@@ -417,6 +613,22 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
       width: double.infinity,
       child: LineChart(
         LineChartData(
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (touchedSpots) {
+                return touchedSpots.map((LineBarSpot touchedSpot) {
+                  // X is in milliseconds in raw data chart
+                  return LineTooltipItem(
+                    'Time: ${(touchedSpot.x / 1000).toStringAsFixed(2)}s\nVoltage: ${touchedSpot.y.toStringAsFixed(2)}',
+                    const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                }).toList();
+              },
+            ),
+          ),
           minX: 0,
           maxX: spots.isNotEmpty ? spots.last.x : 0,
           minY: minY - 0.5,

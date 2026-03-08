@@ -49,6 +49,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
       voltageData: widget.run.voltageData,
       gateTimeOffsets: _currentGateOffsets,
       userId: widget.run.userId,
+      distanceClass: widget.run.distanceClass,
       notes: widget.run.notes,
     );
 
@@ -125,7 +126,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
     return _currentGateOffsets.map((offsetMs) {
       return VerticalLine(
         x: offsetMs / 1000.0,
-        color: Colors.redAccent.withOpacity(0.8),
+        color: Colors.redAccent.withValues(alpha: 0.8),
         strokeWidth: 2,
         dashArray: [5, 5],
       );
@@ -191,7 +192,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
                         reservedSize: 22,
                         interval: 2.0,
                       ),
-                      axisNameWidget: const Text('Time (s)'),
+                      axisNameWidget: Text('Time (s)'),
                     ),
                   ),
                   borderData: FlBorderData(show: true),

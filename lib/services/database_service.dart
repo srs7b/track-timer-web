@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/run_model.dart';
@@ -5,6 +6,10 @@ import '../models/user_model.dart';
 
 class DatabaseService {
   static Database? _database;
+
+  static final StreamController<void> _dbChangeController =
+      StreamController<void>.broadcast();
+  static Stream<void> get onChange => _dbChangeController.stream;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -18,7 +23,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2, // Upgraded from version 1
+      version: 3, // Upgraded from version 2
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -29,14 +34,15 @@ class DatabaseService {
       CREATE TABLE users (
         id TEXT PRIMARY KEY,
         name TEXT,
-        createdDate TEXT
+        createdDate TEXT,
+        gender TEXT
       )
     ''');
 
     // Create a default user immediately since existing runs need to belong somewhere
     await db.execute('''
-      INSERT INTO users (id, name, createdDate) 
-      VALUES ('default_user', 'The Big Yahu', '${DateTime.now().toIso8601String()}')
+      INSERT INTO users (id, name, createdDate, gender) 
+      VALUES ('default_user', 'The Big Yahu', '${DateTime.now().toIso8601String()}', 'M')
     ''');
 
     await db.execute('''
@@ -48,6 +54,7 @@ class DatabaseService {
         voltageData TEXT,
         gateTimeOffsets TEXT,
         userId TEXT,
+        distanceClass INTEGER,
         notes TEXT,
         FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
       )
@@ -87,6 +94,15 @@ class DatabaseService {
         "UPDATE runs SET nodeDistances = '[25.0,25.0,25.0,25.0]' WHERE nodeDistances IS NULL",
       );
     }
+    if (oldVersion < 3) {
+      await db.execute("ALTER TABLE users ADD COLUMN gender TEXT");
+      await db.execute("UPDATE users SET gender = 'M' WHERE gender IS NULL");
+
+      await db.execute("ALTER TABLE runs ADD COLUMN distanceClass INTEGER");
+      await db.execute(
+        "UPDATE runs SET distanceClass = 100 WHERE distanceClass IS NULL",
+      );
+    }
   }
 
   Future<void> saveRun(Run run) async {
@@ -96,6 +112,7 @@ class DatabaseService {
       run.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    _dbChangeController.add(null);
   }
 
   Future<List<Run>> getAllRuns() async {
@@ -122,6 +139,7 @@ class DatabaseService {
       user.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    _dbChangeController.add(null);
   }
 
   Future<List<User>> getAllUsers() async {
@@ -136,10 +154,12 @@ class DatabaseService {
     // Note: Due to foreign constraints (if enforced natively by SQLite PRAGMA),
     // runs will be deleted automatically. Otherwise we delete manually.
     await db.delete('runs', where: 'userId = ?', whereArgs: [id]);
+    _dbChangeController.add(null);
   }
 
   Future<void> deleteRun(String id) async {
     final db = await database;
     await db.delete('runs', where: 'id = ?', whereArgs: [id]);
+    _dbChangeController.add(null);
   }
 }

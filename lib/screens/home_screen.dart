@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/run_model.dart';
 import '../models/user_model.dart';
@@ -6,9 +7,6 @@ import '../services/mock_data_service.dart';
 import '../services/data_processing_service.dart';
 import 'package:intl/intl.dart';
 import 'run_details_screen.dart';
-import 'overlay_screen.dart';
-import 'users_list_screen.dart';
-import 'general_statistics_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,21 +21,46 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  List<User> _users = [];
+  Map<String, User> _userMap = {};
+
+  // Filters
+  String _filterGender = 'All'; // 'All', 'M', 'F'
+  String? _filterAthleteId;
+  int? _filterDistance; // null = All, 100, 200, 400
+  DateTimeRange? _filterDateRange;
+
+  late StreamSubscription<void> _dbSub;
+
   @override
   void initState() {
     super.initState();
-    _loadRuns();
+    _loadData();
+    _dbSub = DatabaseService.onChange.listen((_) {
+      if (mounted) _loadData();
+    });
   }
 
-  Future<void> _loadRuns() async {
+  @override
+  void dispose() {
+    _dbSub.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
     try {
       final runs = await _db.getAllRuns();
+      final users = await _db.getAllUsers();
+      Map<String, User> uMap = {for (var u in users) u.id: u};
+
       setState(() {
         _runs = runs;
+        _users = users;
+        _userMap = uMap;
         _isLoading = false;
       });
     } catch (e) {
@@ -49,116 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<User?> _showUserSelectionDialog() async {
-    final users = await _db.getAllUsers();
-    User? selectedUser;
-
-    return showDialog<User>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Select Athlete'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (users.isEmpty)
-                      const Text('No athletes found. Please create one.')
-                    else
-                      DropdownButton<User>(
-                        isExpanded: true,
-                        hint: const Text('Select existing athlete'),
-                        value: selectedUser,
-                        items: users
-                            .map(
-                              (u) => DropdownMenuItem(
-                                value: u,
-                                child: Text(u.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (val) {
-                          setDialogState(() => selectedUser = val);
-                        },
-                      ),
-                    const Divider(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Create New Athlete'),
-                      onPressed: () async {
-                        final newName = await _showCreateUserDialog();
-                        if (newName != null && newName.isNotEmpty) {
-                          final newUser = User(
-                            id: DateTime.now().millisecondsSinceEpoch
-                                .toString(),
-                            name: newName,
-                            createdDate: DateTime.now(),
-                          );
-                          await _db.saveUser(newUser);
-
-                          if (mounted) {
-                            Navigator.pop(
-                              context,
-                              newUser,
-                            ); // Return new user immediately
-                          }
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: selectedUser != null
-                      ? () => Navigator.pop(context, selectedUser)
-                      : null,
-                  child: const Text('Select'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<String?> _showCreateUserDialog() {
-    final TextEditingController controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New Athlete'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Name'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _generateMockRun() async {
-    final User? selectedUser = await _showUserSelectionDialog();
-    if (selectedUser == null) return; // Cancelled mock generation
-
     // Generate a run simulating a ~10s 100m dash +/- 1.5 seconds
     int mockDurationMs =
         9000 +
@@ -179,113 +93,216 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final newRun = Run(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: '${selectedUser.name} - Mock Run ${_runs.length + 1}',
+      name: 'Unassigned Mock Run ${_runs.length + 1}',
       timestamp: DateTime.now(),
       nodeDistances: distances,
       voltageData: voltageData,
       gateTimeOffsets: gateOffsets,
-      userId: selectedUser.id,
+      userId: null,
+      distanceClass: 100,
       notes: 'Auto-generated mock run',
     );
 
     await _db.saveRun(newRun);
-    _loadRuns();
+    _loadData();
   }
 
   Future<void> _deleteRun(String id) async {
     await _db.deleteRun(id);
-    _loadRuns();
+    _loadData();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Track Timer'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bar_chart),
-            tooltip: 'Global Stats',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const GeneralStatisticsScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.people),
-            tooltip: 'Athletes',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const UsersListScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.compare_arrows),
-            tooltip: 'Overlay Runs',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const OverlayScreen()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Error: $_errorMessage',
-                  style: const TextStyle(color: Colors.redAccent),
-                ),
-              ),
-            )
-          : _runs.isEmpty
-          ? const Center(
-              child: Text('No runs recorded yet. Generate a mock run!'),
-            )
-          : ListView.builder(
-              itemCount: _runs.length,
-              itemBuilder: (context, index) {
-                final run = _runs[index];
-                final dateStr = DateFormat.yMMMd().add_jm().format(
-                  run.timestamp,
-                );
-                return ListTile(
-                  title: Text(run.name),
-                  subtitle: Text(
-                    '${run.totalEventDistance.toStringAsFixed(1)}m • ${run.totalTimeSeconds.toStringAsFixed(2)}s • $dateStr',
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.redAccent),
-                    onPressed: () => _deleteRun(run.id),
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => RunDetailsScreen(run: run),
-                      ),
-                    ).then((_) => _loadRuns());
-                  },
-                );
-              },
-            ),
+      appBar: AppBar(title: const Text('Track Timer')),
+      body: _buildBody(),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'home_fab',
         onPressed: _generateMockRun,
         icon: const Icon(Icons.add),
         label: const Text('Generate Mock Run'),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            'Error: $_errorMessage',
+            style: const TextStyle(color: Colors.redAccent),
+          ),
+        ),
+      );
+    }
+
+    // Apply filters
+    List<Run> filteredRuns = _runs.where((run) {
+      if (_filterAthleteId != null && run.userId != _filterAthleteId) {
+        return false;
+      }
+      if (_filterDistance != null && run.distanceClass != _filterDistance) {
+        return false;
+      }
+      if (_filterDateRange != null) {
+        if (run.timestamp.isBefore(_filterDateRange!.start) ||
+            run.timestamp.isAfter(
+              _filterDateRange!.end.add(const Duration(days: 1)),
+            )) {
+          return false;
+        }
+      }
+      if (_filterGender != 'All') {
+        final user = _userMap[run.userId];
+        if (user == null || user.gender != _filterGender) return false;
+      }
+      return true;
+    }).toList();
+
+    return Column(
+      children: [
+        _buildFilterBar(),
+        Expanded(
+          child: filteredRuns.isEmpty
+              ? const Center(child: Text('No runs match criteria.'))
+              : ListView.builder(
+                  itemCount: filteredRuns.length,
+                  itemBuilder: (context, index) {
+                    final run = filteredRuns[index];
+                    final dateStr = DateFormat.yMMMd().add_jm().format(
+                      run.timestamp,
+                    );
+                    final userName =
+                        run.userId != null && _userMap.containsKey(run.userId)
+                        ? _userMap[run.userId]!.name
+                        : 'Unassigned';
+                    final gender =
+                        run.userId != null && _userMap.containsKey(run.userId)
+                        ? _userMap[run.userId]!.gender
+                        : '?';
+
+                    return ListTile(
+                      title: Text(run.name),
+                      subtitle: Text(
+                        '$userName ($gender) • ${run.distanceClass}m • ${run.totalTimeSeconds.toStringAsFixed(2)}s\n$dateStr',
+                      ),
+                      isThreeLine: true,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.blueGrey),
+                        onPressed: () => _deleteRun(run.id),
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => RunDetailsScreen(run: run),
+                          ),
+                        ).then((_) => _loadData());
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      color: Theme.of(context).cardColor,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // Gender Filter
+            DropdownButton<String>(
+              value: _filterGender,
+              hint: const Text('Gender'),
+              items: [
+                'All',
+                'M',
+                'F',
+                'Unknown',
+              ].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+              onChanged: (val) => setState(() => _filterGender = val ?? 'All'),
+            ),
+            const SizedBox(width: 12),
+            // Athlete Filter
+            DropdownButton<String?>(
+              value: _filterAthleteId,
+              hint: const Text('Athlete'),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('All Athletes'),
+                ),
+                ..._users.map(
+                  (u) => DropdownMenuItem(value: u.id, child: Text(u.name)),
+                ),
+              ],
+              onChanged: (val) => setState(() => _filterAthleteId = val),
+            ),
+            const SizedBox(width: 12),
+            // Distance Filter
+            DropdownButton<int?>(
+              value: _filterDistance,
+              hint: const Text('Distance'),
+              items: [
+                const DropdownMenuItem<int?>(
+                  value: null,
+                  child: Text('All Distances'),
+                ),
+                const DropdownMenuItem<int?>(value: 100, child: Text('100m')),
+                const DropdownMenuItem<int?>(value: 200, child: Text('200m')),
+                const DropdownMenuItem<int?>(value: 400, child: Text('400m')),
+              ],
+              onChanged: (val) => setState(() => _filterDistance = val),
+            ),
+            const SizedBox(width: 12),
+            // Date Filter
+            ActionChip(
+              label: Text(
+                _filterDateRange == null
+                    ? 'Date Range'
+                    : '${DateFormat.MMMd().format(_filterDateRange!.start)} - ${DateFormat.MMMd().format(_filterDateRange!.end)}',
+              ),
+              onPressed: () async {
+                final range = await showDateRangePicker(
+                  context: context,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  initialDateRange: _filterDateRange,
+                );
+                if (range != null) {
+                  setState(() => _filterDateRange = range);
+                }
+              },
+            ),
+            if (_filterGender != 'All' ||
+                _filterAthleteId != null ||
+                _filterDistance != null ||
+                _filterDateRange != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.clear, size: 20),
+                onPressed: () {
+                  setState(() {
+                    _filterGender = 'All';
+                    _filterAthleteId = null;
+                    _filterDistance = null;
+                    _filterDateRange = null;
+                  });
+                },
+                tooltip: 'Clear Filters',
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
