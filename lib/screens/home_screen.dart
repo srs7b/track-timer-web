@@ -214,95 +214,97 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildFilterBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      width: double.infinity,
       color: Theme.of(context).cardColor,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            // Gender Filter
-            DropdownButton<String>(
-              value: _filterGender,
-              hint: const Text('Gender'),
-              items: [
-                'All',
-                'M',
-                'F',
-                'Unknown',
-              ].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
-              onChanged: (val) => setState(() => _filterGender = val ?? 'All'),
-            ),
-            const SizedBox(width: 12),
-            // Athlete Filter
-            DropdownButton<String?>(
-              value: _filterAthleteId,
-              hint: const Text('Athlete'),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('All Athletes'),
-                ),
-                ..._users.map(
-                  (u) => DropdownMenuItem(value: u.id, child: Text(u.name)),
-                ),
-              ],
-              onChanged: (val) => setState(() => _filterAthleteId = val),
-            ),
-            const SizedBox(width: 12),
-            // Distance Filter
-            DropdownButton<int?>(
-              value: _filterDistance,
-              hint: const Text('Distance'),
-              items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('All Distances'),
-                ),
-                const DropdownMenuItem<int?>(value: 100, child: Text('100m')),
-                const DropdownMenuItem<int?>(value: 200, child: Text('200m')),
-                const DropdownMenuItem<int?>(value: 400, child: Text('400m')),
-              ],
-              onChanged: (val) => setState(() => _filterDistance = val),
-            ),
-            const SizedBox(width: 12),
-            // Date Filter
-            ActionChip(
-              label: Text(
-                _filterDateRange == null
-                    ? 'Date Range'
-                    : '${DateFormat.MMMd().format(_filterDateRange!.start)} - ${DateFormat.MMMd().format(_filterDateRange!.end)}',
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12.0,
+        runSpacing: 8.0,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          // Gender Filter
+          DropdownButton<String>(
+            value: _filterGender,
+            hint: const Text('Gender'),
+            items: [
+              'All',
+              'M',
+              'F',
+              'Unknown',
+            ].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+            onChanged: (val) => setState(() => _filterGender = val ?? 'All'),
+          ),
+          const SizedBox(width: 12),
+          // Athlete Filter
+          DropdownButton<String?>(
+            value: _filterAthleteId,
+            hint: const Text('Athlete'),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('All Athletes'),
               ),
-              onPressed: () async {
-                final range = await showDateRangePicker(
-                  context: context,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                  initialDateRange: _filterDateRange,
-                );
-                if (range != null) {
-                  setState(() => _filterDateRange = range);
-                }
-              },
-            ),
-            if (_filterGender != 'All' ||
-                _filterAthleteId != null ||
-                _filterDistance != null ||
-                _filterDateRange != null) ...[
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.clear, size: 20),
-                onPressed: () {
-                  setState(() {
-                    _filterGender = 'All';
-                    _filterAthleteId = null;
-                    _filterDistance = null;
-                    _filterDateRange = null;
-                  });
-                },
-                tooltip: 'Clear Filters',
+              ..._users.map(
+                (u) => DropdownMenuItem(value: u.id, child: Text(u.name)),
               ),
             ],
+            onChanged: (val) => setState(() => _filterAthleteId = val),
+          ),
+          const SizedBox(width: 12),
+          // Distance Filter
+          DropdownButton<int?>(
+            value: _filterDistance,
+            hint: const Text('Distance'),
+            items: [
+              const DropdownMenuItem<int?>(
+                value: null,
+                child: Text('All Distances'),
+              ),
+              const DropdownMenuItem<int?>(value: 100, child: Text('100m')),
+              const DropdownMenuItem<int?>(value: 200, child: Text('200m')),
+              const DropdownMenuItem<int?>(value: 400, child: Text('400m')),
+            ],
+            onChanged: (val) => setState(() => _filterDistance = val),
+          ),
+          const SizedBox(width: 12),
+          // Date Filter
+          ActionChip(
+            label: Text(
+              _filterDateRange == null
+                  ? 'Date Range'
+                  : '${DateFormat.MMMd().format(_filterDateRange!.start)} - ${DateFormat.MMMd().format(_filterDateRange!.end)}',
+            ),
+            onPressed: () async {
+              final range = await showDateRangePicker(
+                context: context,
+                firstDate: DateTime(2020),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+                initialDateRange: _filterDateRange,
+              );
+              if (range != null) {
+                setState(() => _filterDateRange = range);
+              }
+            },
+          ),
+          if (_filterGender != 'All' ||
+              _filterAthleteId != null ||
+              _filterDistance != null ||
+              _filterDateRange != null) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.clear, size: 20),
+              onPressed: () {
+                setState(() {
+                  _filterGender = 'All';
+                  _filterAthleteId = null;
+                  _filterDistance = null;
+                  _filterDateRange = null;
+                });
+              },
+              tooltip: 'Clear Filters',
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

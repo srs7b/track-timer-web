@@ -236,105 +236,109 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       ),
       body: SingleChildScrollView(
         scrollDirection: Axis.vertical,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columnSpacing: 11.0,
-            horizontalMargin: 12.0,
-            sortColumnIndex: _sortColumnIndex == 1 ? null : _sortColumnIndex,
-            sortAscending: _sortAscending,
-            showCheckboxColumn: false,
-            columns: [
-              DataColumn(label: const Text('Name'), onSort: _onSort),
-              DataColumn(
-                label: Row(
-                  children: [
-                    const Text('Gen '),
-                    InkWell(
-                      onTap: _cycleGenderSort,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).primaryColorDark,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          _genderSortFilter,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.topCenter,
+            child: DataTable(
+              columnSpacing: 11.0,
+              horizontalMargin: 12.0,
+              sortColumnIndex: _sortColumnIndex == 1 ? null : _sortColumnIndex,
+              sortAscending: _sortAscending,
+              showCheckboxColumn: false,
+              columns: [
+                DataColumn(label: const Text('Name'), onSort: _onSort),
+                DataColumn(
+                  label: Row(
+                    children: [
+                      const Text('Gen '),
+                      InkWell(
+                        onTap: _cycleGenderSort,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).primaryColorDark,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _genderSortFilter,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              DataColumn(
-                label: const Text('100m PB'),
-                onSort: _onSort,
-                numeric: true,
-              ),
-              DataColumn(
-                label: const Text('200m PB'),
-                onSort: _onSort,
-                numeric: true,
-              ),
-              DataColumn(
-                label: const Text('400m PB'),
-                onSort: _onSort,
-                numeric: true,
-              ),
-              DataColumn(
-                label: const Text('Runs'),
-                onSort: _onSort,
-                numeric: true,
-              ),
-            ],
-            rows: displayedRows.map((row) {
-              return DataRow(
-                onSelectChanged: (_) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => UserSummaryScreen(user: row.user),
+                DataColumn(
+                  label: const Text('100m PB'),
+                  onSort: _onSort,
+                  numeric: true,
+                ),
+                DataColumn(
+                  label: const Text('200m PB'),
+                  onSort: _onSort,
+                  numeric: true,
+                ),
+                DataColumn(
+                  label: const Text('400m PB'),
+                  onSort: _onSort,
+                  numeric: true,
+                ),
+                DataColumn(
+                  label: const Text('Runs'),
+                  onSort: _onSort,
+                  numeric: true,
+                ),
+              ],
+              rows: displayedRows.map((row) {
+                return DataRow(
+                  onSelectChanged: (_) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => UserSummaryScreen(user: row.user),
+                      ),
+                    ).then((_) => _loadData());
+                  },
+                  cells: [
+                    DataCell(Text(row.user.name)),
+                    DataCell(Text(row.user.gender)),
+                    DataCell(
+                      Text(
+                        row.best100 == null
+                            ? '-'
+                            : '${row.best100!.toStringAsFixed(2)}s',
+                      ),
                     ),
-                  ).then((_) => _loadData());
-                },
-                cells: [
-                  DataCell(Text(row.user.name)),
-                  DataCell(Text(row.user.gender)),
-                  DataCell(
-                    Text(
-                      row.best100 == null
-                          ? '-'
-                          : '${row.best100!.toStringAsFixed(2)}s',
+                    DataCell(
+                      Text(
+                        row.best200 == null
+                            ? '-'
+                            : '${row.best200!.toStringAsFixed(2)}s',
+                      ),
                     ),
-                  ),
-                  DataCell(
-                    Text(
-                      row.best200 == null
-                          ? '-'
-                          : '${row.best200!.toStringAsFixed(2)}s',
+                    DataCell(
+                      Text(
+                        row.best400 == null
+                            ? '-'
+                            : '${row.best400!.toStringAsFixed(2)}s',
+                      ),
                     ),
-                  ),
-                  DataCell(
-                    Text(
-                      row.best400 == null
-                          ? '-'
-                          : '${row.best400!.toStringAsFixed(2)}s',
-                    ),
-                  ),
-                  DataCell(Text('${row.totalRuns}')),
-                ],
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
+                    DataCell(Text('${row.totalRuns}')),
+                  ],
+                );
+              }).toList(),
+            ), // DataTable
+          ), // FittedBox
+        ), // SizedBox
+      ), // SingleChildScrollView
+    ); // Scaffold
   }
 }

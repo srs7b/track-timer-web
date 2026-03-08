@@ -239,7 +239,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
             _buildSummaryCard(),
             const SizedBox(height: 20),
             SizedBox(
-              height: 400,
+              height: MediaQuery.of(context).size.height * 0.4,
               child: PageView(
                 controller: _pageController,
                 children: [
@@ -476,68 +476,64 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
         ? minY - (minY.abs() * 0.2)
         : 0; // if accel is negative, show it
 
-    return SizedBox(
-      height: 250,
-      width: double.infinity,
-      child: LineChart(
-        LineChartData(
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (touchedSpots) {
-                return touchedSpots.map((LineBarSpot touchedSpot) {
-                  return LineTooltipItem(
-                    'Time: ${touchedSpot.x.toStringAsFixed(2)}s\nValue: ${touchedSpot.y.toStringAsFixed(2)} $unit',
-                    const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  );
-                }).toList();
+    return LineChart(
+      LineChartData(
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipItems: (touchedSpots) {
+              return touchedSpots.map((LineBarSpot touchedSpot) {
+                return LineTooltipItem(
+                  'Time: ${touchedSpot.x.toStringAsFixed(2)}s\nValue: ${touchedSpot.y.toStringAsFixed(2)} $unit',
+                  const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
+              }).toList();
+            },
+          ),
+        ),
+        minX: 0,
+        maxX: maxX,
+        minY: minY,
+        maxY: maxY == 0 ? 1 : maxY, // Avoid 0 maxY
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: lineColor,
+            barWidth: 4,
+            dotData: const FlDotData(show: true),
+            belowBarData: BarAreaData(
+              show: true,
+              color: lineColor.withValues(alpha: 0.2),
+            ),
+          ),
+        ],
+        titlesData: FlTitlesData(
+          leftTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toStringAsFixed(1)}s',
+                  style: const TextStyle(fontSize: 10),
+                );
               },
             ),
           ),
-          minX: 0,
-          maxX: maxX,
-          minY: minY,
-          maxY: maxY == 0 ? 1 : maxY, // Avoid 0 maxY
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              color: lineColor,
-              barWidth: 4,
-              dotData: const FlDotData(show: true),
-              belowBarData: BarAreaData(
-                show: true,
-                color: lineColor.withValues(alpha: 0.2),
-              ),
-            ),
-          ],
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                  return Text(
-                    '${value.toStringAsFixed(1)}s',
-                    style: const TextStyle(fontSize: 10),
-                  );
-                },
-              ),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
           ),
-          gridData: const FlGridData(show: true),
-          borderData: FlBorderData(show: false),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
+        gridData: const FlGridData(show: true),
+        borderData: FlBorderData(show: false),
       ),
     );
   }
@@ -608,78 +604,74 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
       spots.sort((a, b) => a.x.compareTo(b.x));
     }
 
-    return SizedBox(
-      height: 250,
-      width: double.infinity,
-      child: LineChart(
-        LineChartData(
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (touchedSpots) {
-                return touchedSpots.map((LineBarSpot touchedSpot) {
-                  // X is in milliseconds in raw data chart
-                  return LineTooltipItem(
-                    'Time: ${(touchedSpot.x / 1000).toStringAsFixed(2)}s\nVoltage: ${touchedSpot.y.toStringAsFixed(2)}',
-                    const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  );
-                }).toList();
+    return LineChart(
+      LineChartData(
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipItems: (touchedSpots) {
+              return touchedSpots.map((LineBarSpot touchedSpot) {
+                // X is in milliseconds in raw data chart
+                return LineTooltipItem(
+                  'Time: ${(touchedSpot.x / 1000).toStringAsFixed(2)}s\nVoltage: ${touchedSpot.y.toStringAsFixed(2)}',
+                  const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
+              }).toList();
+            },
+          ),
+        ),
+        minX: 0,
+        maxX: spots.isNotEmpty ? spots.last.x : 0,
+        minY: minY - 0.5,
+        maxY: maxY + 0.5,
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: false,
+            color: Colors.redAccent,
+            barWidth: 2,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(show: false),
+          ),
+        ],
+        extraLinesData: ExtraLinesData(
+          extraLinesOnTop: true,
+          verticalLines: _run.gateTimeOffsets.map((timeMs) {
+            return VerticalLine(
+              x: timeMs.toDouble(),
+              color: Colors.green.withValues(alpha: 0.8),
+              strokeWidth: 2,
+              dashArray: [5, 5],
+            );
+          }).toList(),
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${(value / 1000).toStringAsFixed(1)}s',
+                  style: const TextStyle(fontSize: 10),
+                );
               },
             ),
           ),
-          minX: 0,
-          maxX: spots.isNotEmpty ? spots.last.x : 0,
-          minY: minY - 0.5,
-          maxY: maxY + 0.5,
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: false,
-              color: Colors.redAccent,
-              barWidth: 2,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: false),
-            ),
-          ],
-          extraLinesData: ExtraLinesData(
-            extraLinesOnTop: true,
-            verticalLines: _run.gateTimeOffsets.map((timeMs) {
-              return VerticalLine(
-                x: timeMs.toDouble(),
-                color: Colors.green.withValues(alpha: 0.8),
-                strokeWidth: 2,
-                dashArray: [5, 5],
-              );
-            }).toList(),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
           ),
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 30,
-                getTitlesWidget: (value, meta) {
-                  return Text(
-                    '${(value / 1000).toStringAsFixed(1)}s',
-                    style: const TextStyle(fontSize: 10),
-                  );
-                },
-              ),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
           ),
-          gridData: const FlGridData(show: true),
-          borderData: FlBorderData(show: true),
         ),
+        gridData: const FlGridData(show: true),
+        borderData: FlBorderData(show: true),
       ),
     );
   }
