@@ -65,11 +65,17 @@ class BleService {
       // Discover services
       _statusController.add("BLE: DISCOVERING SERVICES...");
       List<BluetoothService> services = await device.discoverServices();
+      _statusController.add("BLE: FOUND ${services.length} SERVICES");
+      
       bool found = false;
       for (var service in services) {
-        if (service.uuid.toString().toUpperCase() == serviceUuid) {
+        String uuid = service.uuid.toString().toUpperCase();
+        _statusController.add("DEBUG: SERVICE $uuid");
+        if (uuid == serviceUuid) {
+          _statusController.add("BLE: TARGET SERVICE MATCHED");
           for (var characteristic in service.characteristics) {
-            if (characteristic.uuid.toString().toUpperCase() == characteristicUuid) {
+            String cUuid = characteristic.uuid.toString().toUpperCase();
+            if (cUuid == characteristicUuid) {
               _targetCharacteristic = characteristic;
               await _setupNotifications(characteristic);
               found = true;
@@ -85,7 +91,7 @@ class BleService {
         _statusController.add("BLE: ERROR - TARGET SERVICE NOT FOUND");
       }
     } catch (e) {
-      _statusController.add("BLE: CONNECTION ERROR");
+      _statusController.add("BLE ERROR: ${e.toString().split('|').last.trim()}");
       debugPrint("Connection error: $e");
       rethrow;
     }
