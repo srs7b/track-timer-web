@@ -24,15 +24,17 @@ class MockDataService {
     }
 
     // Generate a mock BLE string: "node1,time1,node2,time2,..."
-    // We'll also inject a couple of duplicates/errors to test the parser.
+    // We'll use alphanumeric names to test the new generic parser.
     List<String> rawParts = [];
+    List<String> nodeNames = ["GATE_START", "GATE_A", "GATE_B", "GATE_C", "GATE_FINISH"];
+
     for (int i = 0; i < trueGateOffsets.length; i++) {
-      rawParts.add("${i + 1}");
+      rawParts.add(nodeNames[i]);
       rawParts.add("${trueGateOffsets[i]}");
       
-      // Inject a "recording error" (duplicate) with 30% chance for node 2
+      // Inject a "recording error" (duplicate) with 30% chance for "GATE_A"
       if (i == 1 && random.nextDouble() < 0.3) {
-        rawParts.add("2");
+        rawParts.add("GATE_A");
         rawParts.add("${trueGateOffsets[i] + 50}"); // 50ms later
       }
     }

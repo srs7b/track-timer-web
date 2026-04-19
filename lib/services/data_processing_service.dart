@@ -11,14 +11,18 @@ class DataProcessingService {
       throw const FormatException('Invalid timing data: expected even number of parts (node,time pairs)');
     }
 
-    // Map each unique node ID to its EARLIEST hit time
-    Map<int, int> nodeEarliestHits = {};
+    // Map each unique node Name to its EARLIEST hit time
+    Map<String, int> nodeEarliestHits = {};
     for (int i = 0; i < parts.length; i += 2) {
-      int nodeId = int.parse(parts[i].trim());
-      int timePassed = int.parse(parts[i + 1].trim());
+      String nodeName = parts[i].trim();
+      int? timePassed = int.tryParse(parts[i + 1].trim());
 
-      if (!nodeEarliestHits.containsKey(nodeId) || timePassed < nodeEarliestHits[nodeId]!) {
-        nodeEarliestHits[nodeId] = timePassed;
+      if (timePassed == null) {
+        throw FormatException('Invalid timestamp for node $nodeName: ${parts[i+1]}');
+      }
+
+      if (!nodeEarliestHits.containsKey(nodeName) || timePassed < nodeEarliestHits[nodeName]!) {
+        nodeEarliestHits[nodeName] = timePassed;
       }
     }
 
