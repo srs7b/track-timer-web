@@ -4,18 +4,36 @@ import 'package:http/http.dart' as http;
 import '../models/run_model.dart';
 import 'api_config.dart';
 
-class LLMService {
-  late final GenerativeModel _model;
+import '../services/database_service.dart';
 
-  // Prioritize the local config file, but keep environment variable support
-  static const String _apiKey = ApiConfig.geminiApiKey != 'YOUR_API_KEY_HERE'
+class LLMService {
+  final DatabaseService _db = DatabaseService();
+  GenerativeModel? _cachedModel;
+  String? _cachedKey;
+
+  // Fallback to environment variable if database is empty
+  static const String _fallbackApiKey = ApiConfig.geminiApiKey != 'YOUR_API_KEY_HERE'
       ? ApiConfig.geminiApiKey
       : String.fromEnvironment('GEMINI_API_KEY');
 
-  LLMService() {
-    _model = GenerativeModel(
-      model: 'gemini-2.5-flash',
-      apiKey: _apiKey,
+  LLMService();
+
+  Future<GenerativeModel?> _ensureModel() async {
+    final dbKey = await _db.getSetting('gemini_api_key');
+    final activeKey = (dbKey != null && dbKey.isNotEmpty) ? dbKey : _fallbackApiKey;
+
+    if (activeKey.isEmpty || activeKey == 'YOUR_API_KEY_HERE') {
+      return null;
+    }
+
+    if (_cachedModel != null && _cachedKey == activeKey) {
+      return _cachedModel;
+    }
+
+    _cachedKey = activeKey;
+    _cachedModel = GenerativeModel(
+      model: 'gemini-2.0-flash',
+      apiKey: activeKey,
       systemInstruction: Content.system(
         'You are "Coach Sarge," a elite-level sprinting coach with a drill sergeant personality. '
         'Your tone is gruff, direct, and no-nonsense, but your goal is to help your athletes improve. '
@@ -26,13 +44,16 @@ class LLMService {
         'Keep responses concise, actionable, and data-driven.',
       ),
     );
+    return _cachedModel;
   }
 
   Future<List<String>> getAvailableModels() async {
-    if (!isConfigured) return ["API Key not configured."];
+    final model = await _ensureModel();
+    if (model == null) return ["API Key not configured."];
     try {
+      final key = (await _db.getSetting('gemini_api_key')) ?? _fallbackApiKey;
       final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models?key=$_apiKey',
+        'https://generativelanguage.googleapis.com/v1beta/models?key=$key',
       );
       final response = await http.get(url);
 
@@ -48,7 +69,7 @@ class LLMService {
     }
   }
 
-  bool get isConfigured => _apiKey.isNotEmpty;
+  Future<bool> get isConfigured async => (await _ensureModel()) != null;
 
   String serializeRun(Run run) {
     final Map<String, dynamic> data = {
@@ -65,8 +86,9 @@ class LLMService {
   }
 
   Future<String> getCoachResponse(String message, {List<Run>? runs}) async {
-    if (!isConfigured) {
-      return "LISTEN UP! I can't talk to you without my secure connection! Get that GEMINI_API_KEY configured and stop wasting my time!";
+    final model = await _ensureModel();
+    if (model == null) {
+      return "LISTEN UP! I can't talk to you without my secure connection! Get that GEMINI_API_KEY configured in Settings and stop wasting my time!";
     }
 
     try {
@@ -78,7 +100,7 @@ class LLMService {
       }
 
       final content = [Content.text(fullPrompt)];
-      final response = await _model.generateContent(content);
+      final response = await model.generateContent(content);
       return response.text ??
           "I've got nothing to say to that performance! Try again!";
     } catch (e) {
@@ -90,8 +112,9 @@ class LLMService {
     String message, {
     List<Run>? runs,
   }) async* {
-    if (!isConfigured) {
-      yield "LISTEN UP! I can't talk to you without my secure connection! Get that GEMINI_API_KEY configured and stop wasting my time!";
+    final model = await _ensureModel();
+    if (model == null) {
+      yield "LISTEN UP! I can't talk to you without my secure connection! Get that GEMINI_API_KEY configured in Settings and stop wasting my time!";
       return;
     }
 
@@ -104,7 +127,7 @@ class LLMService {
       }
 
       final content = [Content.text(fullPrompt)];
-      final responses = _model.generateContentStream(content);
+      final responses = model.generateContentStream(content);
 
       await for (final response in responses) {
         if (response.text != null) {
