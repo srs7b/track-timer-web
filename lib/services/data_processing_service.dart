@@ -26,8 +26,8 @@ class DataProcessingService {
       }
     }
 
-    if (nodeEarliestHits.length != 5) {
-      throw FormatException('Invalid run: expected timings for 5 unique nodes, but got ${nodeEarliestHits.length}');
+    if (nodeEarliestHits.length < 2) {
+      throw FormatException('Invalid run: expected timings for at least 2 nodes (start and finish), but got ${nodeEarliestHits.length}');
     }
 
     // Sort by time to ensure normalization is correct

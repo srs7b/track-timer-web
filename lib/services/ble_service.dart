@@ -30,7 +30,10 @@ class BleService {
 
   Future<void> startScan() async {
     if (await FlutterBluePlus.isSupported == false) return;
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+    await FlutterBluePlus.startScan(
+      timeout: const Duration(seconds: 10),
+      withServices: [Guid(serviceUuid)],
+    );
   }
 
   Future<void> stopScan() async {
@@ -83,12 +86,17 @@ class BleService {
     }
   }
 
+  void simulateIncomingData(String raw) {
+    _handleIncomingRawData(utf8.encode(raw));
+  }
+
   void _handleIncomingRawData(List<int> value) {
     if (value.isEmpty) return;
     String rawString = utf8.decode(value);
     debugPrint("Received BLE data: $rawString");
 
     try {
+      // Handle comma-separated node data
       if (rawString.contains(',')) {
         List<int> offsets = DataProcessingService.parseNodeTimingData(rawString);
         _timingDataController.add(offsets);

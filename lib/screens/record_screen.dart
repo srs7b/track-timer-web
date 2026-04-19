@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../services/database_service.dart';
 import '../models/user_model.dart';
+import '../models/run_model.dart';
 import '../services/ble_service.dart';
+import '../services/mock_data_service.dart';
 import '../theme/style_constants.dart';
 import '../widgets/velocity_card.dart';
 import '../widgets/velocity_button.dart';
@@ -25,11 +27,10 @@ class _RecordScreenState extends State<RecordScreen> {
   String _selectedSurface = 'Synthetic Track (Outdoor)';
 
   BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
-  bool _isWifiOn = false;
 
   StreamSubscription? _connectionSub;
 
-  List<double> _nodeDistances = [10.0, 20.0, 30.0, 40.0];
+  List<double> _nodeDistances = [50.0, 50.0];
 
   @override
   void initState() {
@@ -49,6 +50,71 @@ class _RecordScreenState extends State<RecordScreen> {
     _connectionSub = _bleService.connectionState.listen((state) {
       if (mounted) setState(() => _connectionState = state);
     });
+
+    _bleService.timingDataStream.listen((offsets) {
+      if (mounted) _handleFinalTiming(offsets);
+    });
+  }
+
+  void _handleFinalTiming(List<int> offsets) {
+    if (_selectedUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('DATA RECEIVED BUT NO ATHLETE SELECTED')));
+      return;
+    }
+
+    final newRun = Run(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      userId: _selectedUser!.id,
+      name: '${_selectedUser!.name.split(' ').first} ${_selectedDistance}M',
+      timestamp: DateTime.now(),
+      nodeDistances: _nodeDistances,
+      gateTimeOffsets: offsets,
+      distanceClass: _selectedDistance,
+      notes: 'Recorded via BLE Demo (${_selectedSurface})',
+    );
+
+    _showResultDialog(newRun);
+  }
+
+  Future<void> _showResultDialog(Run run) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: VelocityColors.surfaceLight,
+        title: Text('SESSION CAPTURED', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ATHLETE: ${run.name.split(' ').first}', style: VelocityTextStyles.body),
+            const SizedBox(height: 8),
+            Text('TOTAL TIME: ${run.totalTimeSeconds.toStringAsFixed(2)}S', style: VelocityTextStyles.heading.copyWith(fontSize: 24, color: VelocityColors.primary)),
+            const SizedBox(height: 16),
+            Text('SURFACE: ${_selectedSurface}', style: VelocityTextStyles.dimBody.copyWith(fontSize: 10)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('DISCARD', style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: VelocityColors.primary),
+            onPressed: () async {
+              await _db.saveRun(run);
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('SESSION SAVED TO LOG')),
+                );
+              }
+            },
+            child: Text('KEEP RECORD', style: VelocityTextStyles.technical.copyWith(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _editNodeDistances() async {
@@ -254,19 +320,18 @@ class _RecordScreenState extends State<RecordScreen> {
                   const SizedBox(width: 8),
                    Expanded(
                     child: InkWell(
-                      onTap: () => setState(() => _isWifiOn = !_isWifiOn),
+                      onTap: isConnected ? () => _bleService.disconnect() : null,
                       child: VelocityCard(
-                        borderColor: _isWifiOn ? VelocityColors.primary.withOpacity(0.3) : null,
-                        glow: _isWifiOn,
+                        borderColor: isConnected ? Colors.redAccent.withOpacity(0.3) : null,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.wifi_tethering, color: _isWifiOn ? VelocityColors.primary : VelocityColors.textDim, size: 20),
+                            Icon(Icons.stop_circle, color: isConnected ? Colors.redAccent : VelocityColors.textDim, size: 20),
                             const SizedBox(height: 12),
                             StatusIndicator(
-                              label: 'WIFI SYNC',
-                              value: _isWifiOn ? 'CONNECTED' : 'STANDBY',
-                              active: _isWifiOn,
+                              label: 'ACTIVE SESSION',
+                              value: isConnected ? 'READY TO STOP' : 'OFFLINE',
+                              active: false, // Don't glow red
                             ),
                           ],
                         ),
@@ -347,7 +412,14 @@ class _RecordScreenState extends State<RecordScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: VelocityButton(
                 label: isConnected ? 'START SESSION' : 'HARDWARE OFFLINE',
-                onPressed: isConnected ? () {} : null,
+                onPressed: isConnected ? () async {
+                  await _bleService.sendStartCommand();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('START COMMAND SENT TO ARDUINO')),
+                    );
+                  }
+                } : null,
                 icon: Icons.play_arrow,
               ),
             ),
@@ -357,14 +429,34 @@ class _RecordScreenState extends State<RecordScreen> {
             // Secondary Actions
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SizedBox(
-                width: double.infinity,
-                child: VelocityButton(
-                  label: 'SCAN FOR HARDWARE',
-                  primary: false,
-                  icon: Icons.search,
-                  onPressed: _showBleScanDialog,
-                ),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: VelocityButton(
+                      label: 'SCAN FOR HARDWARE',
+                      primary: false,
+                      icon: Icons.search,
+                      onPressed: _showBleScanDialog,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: VelocityButton(
+                      label: 'MOCK DEMO RUN',
+                      primary: false,
+                      icon: Icons.biotech,
+                      onPressed: () {
+                        final mock = MockDataService.generateMockRunData(
+                          durationMs: 10000 + (new DateTime.now().millisecond % 2000), // ~10-12s
+                          numGates: 3,
+                        );
+                        _bleService.simulateIncomingData(mock['rawBleString']);
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 60),
