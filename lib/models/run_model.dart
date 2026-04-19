@@ -4,7 +4,6 @@ class Run {
   final String id;
   final String name;
   final DateTime timestamp;
-  final List<double> voltageData;
   final List<int> gateTimeOffsets; // ms from start
   final List<double> nodeDistances; // distances between successive gates (m)
   final String? userId; // Null if unassigned
@@ -16,7 +15,6 @@ class Run {
     required this.name,
     required this.timestamp,
     required this.nodeDistances,
-    required this.voltageData,
     required this.gateTimeOffsets,
     this.userId,
     required this.distanceClass,
@@ -29,7 +27,6 @@ class Run {
       'name': name,
       'timestamp': timestamp.toIso8601String(),
       'nodeDistances': jsonEncode(nodeDistances),
-      'voltageData': jsonEncode(voltageData),
       'gateTimeOffsets': jsonEncode(gateTimeOffsets),
       'userId': userId,
       'distanceClass': distanceClass,
@@ -57,9 +54,6 @@ class Run {
       name: map['name'],
       timestamp: DateTime.parse(map['timestamp']),
       nodeDistances: parsedDistances,
-      voltageData: List<double>.from(
-        jsonDecode(map['voltageData']).map((x) => x.toDouble()),
-      ),
       gateTimeOffsets: List<int>.from(
         jsonDecode(map['gateTimeOffsets']).map((x) => x.toInt()),
       ),
@@ -155,5 +149,11 @@ class Run {
       );
     }
     return accelerations; // in m/s^2
+  }
+
+  double get topSpeed {
+    final vels = segmentVelocities;
+    if (vels.isEmpty) return 0.0;
+    return vels.reduce((a, b) => a > b ? a : b);
   }
 }

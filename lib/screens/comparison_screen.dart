@@ -4,21 +4,26 @@ import 'package:fl_chart/fl_chart.dart';
 import '../models/run_model.dart';
 import '../models/user_model.dart';
 import '../services/database_service.dart';
+import '../theme/style_constants.dart';
+import '../widgets/velocity_card.dart';
+import '../widgets/velocity_button.dart';
 
 class _ComparisonSeries {
+  final String id; // Source ID (run id or pattern id)
   final String label;
   final Color color;
-  final List<FlSpot> positionSpots;
-  final List<FlSpot> velocitySpots;
-  final List<FlSpot> accelerationSpots;
+  final List<FlSpot> posSpots;
+  final List<FlSpot> velSpots;
+  final List<FlSpot> accelSpots;
   final double maxTime;
 
   _ComparisonSeries({
+    required this.id,
     required this.label,
     required this.color,
-    required this.positionSpots,
-    required this.velocitySpots,
-    required this.accelerationSpots,
+    required this.posSpots,
+    required this.velSpots,
+    required this.accelSpots,
     required this.maxTime,
   });
 }
@@ -37,31 +42,17 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
   List<Run> _allRuns = [];
   List<User> _allUsers = [];
   bool _isLoading = true;
-
   final List<_ComparisonSeries> _seriesList = [];
-
-  final List<Color> _availableColors = [
-    Colors.blue,
-    Colors.red,
-    Colors.green,
-    Colors.orange,
-    Colors.purple,
-    Colors.teal,
-    Colors.pink,
-  ];
-  int _colorIndex = 0;
   late StreamSubscription<void> _dbSub;
+
+  int _currentMetricPage = 0;
 
   @override
   void initState() {
     super.initState();
     _loadData();
     _dbSub = DatabaseService.onChange.listen((_) {
-      if (mounted) {
-        _seriesList
-            .clear(); // Clear graph automatically on db refresh for simplicity
-        _loadData();
-      }
+      if (mounted) _loadData();
     });
   }
 
@@ -73,550 +64,347 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
     final runs = await _db.getAllRuns();
     final users = await _db.getAllUsers();
-    setState(() {
-      _allRuns = runs;
-      _allUsers = users;
-      _isLoading = false;
-    });
-  }
-
-  Color _getNextColor() {
-    Color c = _availableColors[_colorIndex % _availableColors.length];
-    _colorIndex++;
-    return c;
-  }
-
-  void _removeSeries(int index) {
-    setState(() {
-      _seriesList.removeAt(index);
-    });
-  }
-
-  Future<void> _showAddDialog() async {
-    if (_allUsers.isEmpty || _allRuns.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No athletes or runs available to compare.'),
-        ),
-      );
-      return;
-    }
-
-    User? selectedUser;
-    int? selectedDistance;
-    String? selectedMetric; // 'Average', 'PB', 'L5', 'L10', 'Specific'
-    String? averageTimeframe =
-        'All Time'; // 'All Time', 'Today', 'Week', 'Month'
-    Run? selectedSpecificRun;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            // Filter distance options based on user's runs
-            List<int> availableDistances = [];
-            if (selectedUser != null) {
-              final userRuns = _allRuns.where(
-                (r) => r.userId == selectedUser!.id,
-              );
-              availableDistances = userRuns
-                  .map((r) => r.distanceClass)
-                  .toSet()
-                  .toList();
-              availableDistances.sort();
-            }
-
-            // Filter specific runs if metric is 'Specific'
-            List<Run> specificRuns = [];
-            if (selectedUser != null &&
-                selectedDistance != null &&
-                selectedMetric == 'Specific') {
-              specificRuns = _allRuns
-                  .where(
-                    (r) =>
-                        r.userId == selectedUser!.id &&
-                        r.distanceClass == selectedDistance,
-                  )
-                  .toList();
-              specificRuns.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 16,
-                right: 16,
-                top: 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Add Comparison Data',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 1. Select Athlete
-                    DropdownButtonFormField<User>(
-                      decoration: const InputDecoration(labelText: 'Athlete'),
-                      items: _allUsers
-                          .map(
-                            (u) =>
-                                DropdownMenuItem(value: u, child: Text(u.name)),
-                          )
-                          .toList(),
-                      initialValue: selectedUser,
-                      onChanged: (val) {
-                        setModalState(() {
-                          selectedUser = val;
-                          selectedDistance = null;
-                          selectedMetric = null;
-                          selectedSpecificRun = null;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 2. Select Distance
-                    if (selectedUser != null)
-                      DropdownButtonFormField<int>(
-                        decoration: const InputDecoration(
-                          labelText: 'Distance',
-                        ),
-                        items: availableDistances
-                            .map(
-                              (d) => DropdownMenuItem(
-                                value: d,
-                                child: Text('${d}m'),
-                              ),
-                            )
-                            .toList(),
-                        initialValue: selectedDistance,
-                        onChanged: (val) {
-                          setModalState(() {
-                            selectedDistance = val;
-                            selectedMetric = null;
-                            selectedSpecificRun = null;
-                          });
-                        },
-                      ),
-                    const SizedBox(height: 12),
-
-                    // 3. Select Metric
-                    if (selectedDistance != null)
-                      DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'Metric'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Average',
-                            child: Text('Average'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'PB',
-                            child: Text('Personal Best'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'L5',
-                            child: Text('Last 5 Average'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'L10',
-                            child: Text('Last 10 Average'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Specific',
-                            child: Text('Specific Run'),
-                          ),
-                        ],
-                        initialValue: selectedMetric,
-                        onChanged: (val) {
-                          setModalState(() {
-                            selectedMetric = val;
-                            selectedSpecificRun = null;
-                          });
-                        },
-                      ),
-                    const SizedBox(height: 12),
-
-                    // 4a. Average Timeframe
-                    if (selectedMetric == 'Average')
-                      DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(
-                          labelText: 'Timeframe',
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'All Time',
-                            child: Text('All Time'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Today',
-                            child: Text('Today'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Week',
-                            child: Text('Last 7 Days'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Month',
-                            child: Text('Last 30 Days'),
-                          ),
-                        ],
-                        initialValue: averageTimeframe,
-                        onChanged: (val) =>
-                            setModalState(() => averageTimeframe = val),
-                      ),
-
-                    // 4b. Specific Run Selection
-                    if (selectedMetric == 'Specific')
-                      DropdownButtonFormField<Run>(
-                        decoration: const InputDecoration(
-                          labelText: 'Select Run',
-                        ),
-                        items: specificRuns
-                            .map(
-                              (r) => DropdownMenuItem(
-                                value: r,
-                                child: Text(r.name),
-                              ),
-                            )
-                            .toList(),
-                        initialValue: selectedSpecificRun,
-                        onChanged: (val) =>
-                            setModalState(() => selectedSpecificRun = val),
-                      ),
-
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed:
-                          (selectedUser != null &&
-                              selectedDistance != null &&
-                              selectedMetric != null)
-                          ? () {
-                              _handleAddSeries(
-                                selectedUser!,
-                                selectedDistance!,
-                                selectedMetric!,
-                                averageTimeframe,
-                                selectedSpecificRun,
-                              );
-                              Navigator.pop(context);
-                            }
-                          : null,
-                      child: const Text('Add to Graph'),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _handleAddSeries(
-    User user,
-    int distance,
-    String metric,
-    String? timeframe,
-    Run? specificRun,
-  ) {
-    List<Run> targetRuns = _allRuns
-        .where((r) => r.userId == user.id && r.distanceClass == distance)
-        .toList();
-    targetRuns.sort(
-      (a, b) => b.timestamp.compareTo(a.timestamp),
-    ); // newest first
-
-    if (targetRuns.isEmpty) return;
-
-    String label = '${user.name} ${distance}m';
-    List<Run> selectedRuns = [];
-
-    switch (metric) {
-      case 'Specific':
-        if (specificRun == null) return;
-        selectedRuns = [specificRun];
-        label += ' - ${specificRun.name}';
-        break;
-      case 'PB':
-        // Find fastest totalTimeSeconds
-        Run pb = targetRuns.reduce(
-          (curr, next) =>
-              curr.totalTimeSeconds < next.totalTimeSeconds ? curr : next,
-        );
-        selectedRuns = [pb];
-        label += ' - PB';
-        break;
-      case 'L5':
-        selectedRuns = targetRuns.take(5).toList();
-        label += ' - L5 Avg';
-        break;
-      case 'L10':
-        selectedRuns = targetRuns.take(10).toList();
-        label += ' - L10 Avg';
-        break;
-      case 'Average':
-        if (timeframe == 'Today') {
-          final now = DateTime.now();
-          selectedRuns = targetRuns
-              .where(
-                (r) =>
-                    r.timestamp.year == now.year &&
-                    r.timestamp.month == now.month &&
-                    r.timestamp.day == now.day,
-              )
-              .toList();
-          label += ' - Today Avg';
-        } else if (timeframe == 'Week') {
-          final cutoff = DateTime.now().subtract(const Duration(days: 7));
-          selectedRuns = targetRuns
-              .where((r) => r.timestamp.isAfter(cutoff))
-              .toList();
-          label += ' - Week Avg';
-        } else if (timeframe == 'Month') {
-          final cutoff = DateTime.now().subtract(const Duration(days: 30));
-          selectedRuns = targetRuns
-              .where((r) => r.timestamp.isAfter(cutoff))
-              .toList();
-          label += ' - Month Avg';
-        } else {
-          selectedRuns = targetRuns;
-          label += ' - All Time Avg';
-        }
-        break;
-    }
-
-    if (selectedRuns.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No runs match this criteria.')),
-      );
-      return;
-    }
-
-    _ComparisonSeries? newSeries = _createSeriesFromRuns(
-      label,
-      _getNextColor(),
-      selectedRuns,
-    );
-    if (newSeries != null) {
+    if (mounted) {
       setState(() {
-        _seriesList.add(newSeries);
+        _allRuns = runs;
+        _allUsers = users;
+        _isLoading = false;
       });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not average these runs (mismatched gate layouts).',
-          ),
-        ),
-      );
     }
   }
 
-  _ComparisonSeries? _createSeriesFromRuns(
-    String label,
-    Color color,
-    List<Run> runs,
-  ) {
-    if (runs.isEmpty) return null;
-    if (runs.length == 1) {
-      return _generateSeriesFromRun(label, color, runs.first);
-    }
+  void _addSeriesToComparison(String id, String label, Run run) {
+    if (_seriesList.any((s) => s.id == id)) return;
+    if (_seriesList.length >= 4) return;
 
-    // To average runs, we must only average runs with the exact same number of gates
-    // Find the most frequent gate count
-    Map<int, int> gateCounts = {};
-    for (var r in runs) {
-      int count = r.gateTimeOffsets.length;
-      gateCounts[count] = (gateCounts[count] ?? 0) + 1;
-    }
-    int modeGates = gateCounts.entries
-        .reduce((a, b) => a.value > b.value ? a : b)
-        .key;
+    final colors = [
+      VelocityColors.primary,
+      VelocityColors.secondary,
+      Colors.purpleAccent,
+      Colors.orangeAccent,
+    ];
 
-    List<Run> validRuns = runs
-        .where((r) => r.gateTimeOffsets.length == modeGates)
-        .toList();
-    if (validRuns.isEmpty) {
-      return null;
-    }
-
-    // Average gateTimeOffsets and nodeDistances
-    List<int> avgOffsets = List.filled(modeGates, 0);
-    List<double> avgDistances = List.filled(modeGates - 1, 0.0);
-
-    for (var r in validRuns) {
-      for (int i = 0; i < modeGates; i++) {
-        avgOffsets[i] += r.gateTimeOffsets[i];
-      }
-      for (int i = 0; i < modeGates - 1; i++) {
-        avgDistances[i] += (i < r.nodeDistances.length)
-            ? r.nodeDistances[i]
-            : 0.0;
-      }
-    }
-
-    for (int i = 0; i < modeGates; i++) {
-      avgOffsets[i] = (avgOffsets[i] / validRuns.length).round();
-    }
-    for (int i = 0; i < modeGates - 1; i++) {
-      avgDistances[i] = avgDistances[i] / validRuns.length;
-    }
-
-    Run syntheticRun = Run(
-      id: 'synthetic',
-      name: 'synthetic',
-      timestamp: DateTime.now(),
-      nodeDistances: avgDistances,
-      voltageData: [],
-      gateTimeOffsets: avgOffsets,
-      userId: null,
-      distanceClass: validRuns.first.distanceClass,
-    );
-
-    return _generateSeriesFromRun(label, color, syntheticRun);
+    setState(() {
+      _seriesList.add(_generateSeriesFromRun(
+        id,
+        label.toUpperCase(),
+        colors[_seriesList.length % colors.length],
+        run,
+      ));
+    });
   }
 
-  _ComparisonSeries _generateSeriesFromRun(String label, Color color, Run run) {
+  _ComparisonSeries _generateSeriesFromRun(String id, String label, Color color, Run run) {
     final vels = run.segmentVelocities;
     final accels = run.segmentAccelerations;
     final times = run.cumulativeTimeSeconds;
     final positions = run.positionProfile;
 
-    List<FlSpot> pSpots = [];
-    List<FlSpot> vSpots = [];
-    List<FlSpot> aSpots = [];
+    List<FlSpot> posSpots = [];
+    List<FlSpot> velSpots = [];
+    List<FlSpot> accelSpots = [];
 
     for (int i = 0; i < times.length; i++) {
-      if (i < positions.length) pSpots.add(FlSpot(times[i], positions[i]));
-      if (i < vels.length) vSpots.add(FlSpot(times[i], vels[i]));
-      if (i < accels.length) aSpots.add(FlSpot(times[i], accels[i]));
+      if (i < positions.length) posSpots.add(FlSpot(times[i], positions[i]));
+      if (i < vels.length) velSpots.add(FlSpot(times[i], vels[i]));
+      if (i < accels.length) accelSpots.add(FlSpot(times[i], accels[i]));
     }
 
     return _ComparisonSeries(
+      id: id,
       label: label,
       color: color,
-      positionSpots: pSpots,
-      velocitySpots: vSpots,
-      accelerationSpots: aSpots,
+      posSpots: posSpots,
+      velSpots: velSpots,
+      accelSpots: accelSpots,
       maxTime: times.isNotEmpty ? times.last : 0.0,
     );
   }
 
-  Widget _buildChart(
-    String title,
-    String unit,
-    List<LineChartBarData> barData,
-    double maxX,
-  ) {
-    if (barData.isEmpty) {
-      return Center(
-        child: Text(
-          'Add data series below to begin comparing.',
-          style: TextStyle(color: Colors.grey),
+  Future<void> _showAddComparisonDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => DefaultTabController(
+        length: 2,
+        child: AlertDialog(
+          backgroundColor: VelocityColors.surfaceLight,
+          title: Text('ADD TO COMPARISON', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: Column(
+              children: [
+                TabBar(
+                  labelStyle: VelocityTextStyles.technical.copyWith(fontSize: 10),
+                  labelColor: VelocityColors.primary,
+                  unselectedLabelColor: VelocityColors.textDim,
+                  indicatorColor: VelocityColors.primary,
+                  tabs: [
+                    Tab(text: 'SESSIONS'),
+                    Tab(text: 'PATTERNS'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _buildSessionSelectionList(),
+                      _buildPatternSelectionList(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSessionSelectionList() {
+    return _allRuns.isEmpty
+        ? Center(child: Text('NO SESSIONS FOUND', style: VelocityTextStyles.dimBody))
+        : ListView.builder(
+            itemCount: _allRuns.length,
+            itemBuilder: (context, index) {
+              final run = _allRuns[index];
+              final isAlreadyAdded = _seriesList.any((s) => s.id == run.id);
+              return ListTile(
+                enabled: !isAlreadyAdded,
+                title: Text(run.name.toUpperCase(), style: VelocityTextStyles.body.copyWith(
+                  color: isAlreadyAdded ? VelocityColors.textDim : VelocityColors.textBody,
+                )),
+                subtitle: Text('${run.distanceClass}M · ${run.totalTimeSeconds.toStringAsFixed(2)}S', style: VelocityTextStyles.dimBody),
+                onTap: () {
+                  _addSeriesToComparison(run.id, run.name, run);
+                  Navigator.pop(context);
+                },
+              );
+            },
+          );
+  }
+
+  Widget _buildPatternSelectionList() {
+    return ListView.builder(
+      itemCount: _allUsers.length,
+      itemBuilder: (context, index) {
+        final user = _allUsers[index];
+        return ExpansionTile(
+          title: Text(user.name.toUpperCase(), style: VelocityTextStyles.body),
+          children: [
+            _buildPatternItem(user, 'PERSONAL BEST', 100),
+            _buildPatternItem(user, 'AVERAGE RUN', 100),
+            _buildPatternItem(user, 'PERSONAL BEST', 200),
+            _buildPatternItem(user, 'AVERAGE RUN', 200),
+            _buildPatternItem(user, 'PERSONAL BEST', 400),
+            _buildPatternItem(user, 'AVERAGE RUN', 400),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPatternItem(User user, String type, int dist) {
+    String patternId = '${user.id}_${type}_$dist';
+    bool alreadyAdded = _seriesList.any((s) => s.id == patternId);
+
+    return ListTile(
+      dense: true,
+      enabled: !alreadyAdded,
+      title: Text('$type (${dist}M)', style: VelocityTextStyles.dimBody.copyWith(
+        color: alreadyAdded ? VelocityColors.textDim : VelocityColors.textBody,
+        fontSize: 11
+      )),
+      onTap: () async {
+        final runs = _allRuns.where((r) => r.userId == user.id && r.distanceClass == dist).toList();
+        if (runs.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('NO DATA FOR THIS PATTERN')));
+          return;
+        }
+
+        Run? patternRun;
+        if (type == 'PERSONAL BEST') {
+          runs.sort((a, b) => a.totalTimeSeconds.compareTo(b.totalTimeSeconds));
+          patternRun = runs.first;
+        } else {
+          patternRun = _calculateAverageRun(runs, user, dist);
+        }
+
+        _addSeriesToComparison(patternId, '${user.name.split(' ').first} $type ($dist)', patternRun);
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  Run _calculateAverageRun(List<Run> runs, User user, int dist) {
+    // Basic average: average the gate time offsets
+    List<int> avgOffsets = [];
+    int maxGates = runs.fold(0, (prev, r) => r.gateTimeOffsets.length > prev ? r.gateTimeOffsets.length : prev);
+    
+    for (int i = 0; i < maxGates; i++) {
+      int sum = 0;
+      int count = 0;
+      for (var r in runs) {
+        if (i < r.gateTimeOffsets.length) {
+          sum += r.gateTimeOffsets[i];
+          count++;
+        }
+      }
+      avgOffsets.add(sum ~/ count);
+    }
+
+    return Run(
+      id: 'avg_${user.id}_$dist',
+      name: 'AVG $dist',
+      timestamp: DateTime.now(),
+      nodeDistances: runs.first.nodeDistances, // Assuming consistency for distance
+      gateTimeOffsets: avgOffsets,
+      userId: user.id,
+      distanceClass: dist,
+      notes: 'Computed average run',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: VelocityColors.black,
+        body: Center(child: CircularProgressIndicator(color: VelocityColors.primary)),
       );
     }
 
-    double maxY = 0;
-    double minY = double.infinity;
-    for (var series in barData) {
-      for (var spot in series.spots) {
-        if (spot.y > maxY) {
-          maxY = spot.y;
-        }
-        if (spot.y < minY) {
-          minY = spot.y;
-        }
-      }
-    }
-    if (minY == double.infinity) {
-      minY = 0;
-    }
-
-    maxY = maxY + (maxY.abs() * 0.2);
-    minY = minY < 0 ? minY - (minY.abs() * 0.2) : 0;
-    if (maxY == 0) {
-      maxY = 1;
-    }
-
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+    return Scaffold(
+      backgroundColor: VelocityColors.black,
+      appBar: AppBar(
+        title: Text('TRACK.TIME', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textBody, letterSpacing: 4)),
+      ),
+      body: SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '$title ($unit)',
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('COMPARISON ANALYSIS', style: VelocityTextStyles.subHeading.copyWith(letterSpacing: 2)),
+                  if (_seriesList.isNotEmpty)
+                    TextButton(
+                      onPressed: () => setState(() => _seriesList.clear()),
+                      child: Text('CLEAR ALL', style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent, fontSize: 10)),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: LineChart(
-                LineChartData(
-                  minX: 0,
-                  maxX: maxX,
-                  minY: minY,
-                  maxY: maxY,
-                  lineBarsData: barData,
-                  lineTouchData: LineTouchData(
-                    touchTooltipData: LineTouchTooltipData(
-                      getTooltipItems: (touchedSpots) {
-                        return touchedSpots.map((LineBarSpot touchedSpot) {
-                          return LineTooltipItem(
-                            'Time: ${touchedSpot.x.toStringAsFixed(2)}s\nValue: ${touchedSpot.y.toStringAsFixed(2)}',
-                            TextStyle(
-                              color: touchedSpot.bar.color ?? Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          );
-                        }).toList();
-                      },
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                      ),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          return Text(
-                            '${value.toStringAsFixed(1)}s',
-                            style: const TextStyle(fontSize: 10),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  gridData: const FlGridData(show: true),
-                  borderData: FlBorderData(show: false),
+            
+            if (_seriesList.isEmpty)
+              _buildEmptyState()
+            else
+              _buildComparisonContent(),
+              
+            const SizedBox(height: 24),
+            
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: VelocityButton(
+                label: 'ADD TO COMPARISON',
+                onPressed: _seriesList.length < 4 ? _showAddComparisonDialog : null,
+                icon: Icons.add,
+              ),
+            ),
+            
+            if (_seriesList.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text('ACTIVE SERIES', style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim, letterSpacing: 1)),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 80,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _seriesList.length,
+                  itemBuilder: (context, index) {
+                    final s = _seriesList[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: _buildSeriesTrayItem(s),
+                    );
+                  },
                 ),
               ),
+            ],
+            
+            const SizedBox(height: 48),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeriesTrayItem(_ComparisonSeries s) {
+    return Container(
+      width: 160,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: VelocityColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: s.color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: s.color, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  s.label, 
+                  maxLines: 1, 
+                  overflow: TextOverflow.ellipsis,
+                  style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textBody)
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _seriesList.removeWhere((item) => item.id == s.id)),
+                child: Icon(Icons.close, size: 14, color: Colors.redAccent.withOpacity(0.7)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'MAX: ${s.maxTime.toStringAsFixed(2)}S', 
+            style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return VelocityCard(
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 24),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.compare_arrows, size: 48, color: VelocityColors.textDim),
+            const SizedBox(height: 16),
+            Text(
+              'NO DATA SELECTED',
+              style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add specific runs or athlete patterns to begin comparison.',
+              textAlign: TextAlign.center,
+              style: VelocityTextStyles.dimBody.copyWith(fontSize: 10),
             ),
           ],
         ),
@@ -624,107 +412,116 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+  Widget _buildComparisonContent() {
+    return Column(
+      children: [
+        SizedBox(
+          height: 320,
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (idx) => setState(() => _currentMetricPage = idx),
+            children: [
+              _buildChartCard('POSITION (m)'),
+              _buildChartCard('VELOCITY (m/s)'),
+              _buildChartCard('ACCELERATION (m/s²)'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(3, (i) => Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _currentMetricPage == i ? VelocityColors.primary : VelocityColors.textDim.withOpacity(0.3),
+            ),
+          )),
+        ),
+      ],
+    );
+  }
 
-    double globalMaxTime = 0;
-    List<LineChartBarData> posBars = [];
-    List<LineChartBarData> velBars = [];
-    List<LineChartBarData> accBars = [];
+  Widget _buildChartCard(String metricTitle) {
+    List<LineChartBarData> bars = [];
+    double maxX = 0;
 
     for (var s in _seriesList) {
-      if (s.maxTime > globalMaxTime) globalMaxTime = s.maxTime;
+      if (s.maxTime > maxX) maxX = s.maxTime;
+      List<FlSpot> spots;
+      if (_currentMetricPage == 0) spots = s.posSpots;
+      else if (_currentMetricPage == 1) spots = s.velSpots;
+      else spots = s.accelSpots;
 
-      posBars.add(
-        LineChartBarData(
-          spots: s.positionSpots,
-          color: s.color,
-          isCurved: true,
-          barWidth: 3,
-          dotData: const FlDotData(show: true),
-        ),
-      );
-
-      velBars.add(
-        LineChartBarData(
-          spots: s.velocitySpots,
-          color: s.color,
-          isCurved: true,
-          barWidth: 3,
-          dotData: const FlDotData(show: true),
-        ),
-      );
-
-      accBars.add(
-        LineChartBarData(
-          spots: s.accelerationSpots,
-          color: s.color,
-          isCurved: true,
-          barWidth: 3,
-          dotData: const FlDotData(show: true),
-        ),
-      );
+      bars.add(LineChartBarData(
+        spots: spots,
+        color: s.color,
+        isCurved: true,
+        barWidth: 3,
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(show: true, color: s.color.withOpacity(0.05)),
+      ));
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Compare Runs')),
-      body: Column(
+    return VelocityCard(
+      padding: const EdgeInsets.fromLTRB(8, 24, 24, 16),
+      child: Column(
         children: [
-          SizedBox(
-            height: 350,
-            child: PageView(
-              controller: _pageController,
-              children: [
-                _buildChart('Position Profile', 'm', posBars, globalMaxTime),
-                _buildChart('Velocity Profile', 'm/s', velBars, globalMaxTime),
-                _buildChart(
-                  'Acceleration Profile',
-                  'm/s²',
-                  accBars,
-                  globalMaxTime,
-                ),
-              ],
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.0),
-            child: Text(
-              'Swipe graphs to view Vel/Acc →',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          const Divider(),
+          Text(metricTitle, style: VelocityTextStyles.technical.copyWith(fontSize: 10, letterSpacing: 2, color: VelocityColors.textDim)),
+          const SizedBox(height: 24),
           Expanded(
-            child: _seriesList.isEmpty
-                ? const Center(child: Text('No data series added.'))
-                : ListView.builder(
-                    itemCount: _seriesList.length,
-                    itemBuilder: (context, index) {
-                      final s = _seriesList[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: s.color,
-                          radius: 12,
-                        ),
-                        title: Text(s.label),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => _removeSeries(index),
-                        ),
-                      );
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1),
+                ),
+                titlesData: FlTitlesData(
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      interval: (maxX > 0) ? (maxX / 5).clamp(0.5, 5.0) : 1.0,
+                      getTitlesWidget: (val, meta) => Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text('${val.toStringAsFixed(1)}s', style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+                      ),
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      getTitlesWidget: (val, meta) => Text(val.toInt().toString(), style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: bars,
+                lineTouchData: LineTouchData(
+                  handleBuiltInTouches: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => VelocityColors.surfaceLight,
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((s) {
+                        final series = _seriesList[s.barIndex];
+                        return LineTooltipItem(
+                          '${series.label}: ${s.y.toStringAsFixed(2)}',
+                          VelocityTextStyles.technical.copyWith(color: series.color, fontSize: 10),
+                        );
+                      }).toList();
                     },
                   ),
+                ),
+              ),
+            ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'comparison_fab',
-        onPressed: _showAddDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Series'),
       ),
     );
   }

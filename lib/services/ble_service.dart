@@ -1,99 +1,135 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'data_processing_service.dart';
 
 class BleService {
   BluetoothDevice? connectedDevice;
-  StreamSubscription<List<int>>? _dataSubscription;
+  BluetoothCharacteristic? _targetCharacteristic;
+  StreamSubscription<List<int>>? _lastValueSubscription;
 
-  // Threshold for detecting a laser break (spike in voltage)
-  static const double spikeThreshold =
-      2.5; // Example value, should be configurable
+  // HM-10 / CC2541 Common UUIDs
+  static const String serviceUuid = "0000FFE0-0000-1000-8000-00805F9B34FB";
+  static const String characteristicUuid = "0000FFE1-0000-1000-8000-00805F9B34FB";
 
-  final _runDataController = StreamController<double>.broadcast();
-  Stream<double> get runDataStream => _runDataController.stream;
+  final _connectionStateController = StreamController<BluetoothConnectionState>.broadcast();
+  Stream<BluetoothConnectionState> get connectionState => _connectionStateController.stream;
 
-  final _gateCrossingController = StreamController<int>.broadcast();
-  Stream<int> get gateCrossingStream => _gateCrossingController.stream;
+  final _isScanningController = StreamController<bool>.broadcast();
+  Stream<bool> get isScanning => _isScanningController.stream;
 
-  List<double> currentRunVoltages = [];
-  List<int> gateTimes = [];
-  DateTime? startTime;
+  final _timingDataController = StreamController<List<int>>.broadcast();
+  Stream<List<int>> get timingDataStream => _timingDataController.stream;
+
+  BleService() {
+    FlutterBluePlus.isScanning.listen((scanning) {
+      _isScanningController.add(scanning);
+    });
+  }
 
   Future<void> startScan() async {
-    // Note: The license parameter is required but seems to be an arbitrary string for some older plugins.
-    // If using the latest version of flutter_blue_plus, this might not be required or might take a different form.
-    // Since the IDE requires it, providing a blank placeholder.
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 4));
+    if (await FlutterBluePlus.isSupported == false) return;
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+  }
+
+  Future<void> stopScan() async {
+    await FlutterBluePlus.stopScan();
   }
 
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
 
   Future<void> connectToDevice(BluetoothDevice device) async {
-    // Note: Some versions of flutter_blue_plus require a license string or similar for connection
     try {
-      // Trying with empty license if required by the analyzer
-      // ignore: missing_required_argument
       await device.connect();
-    } catch (e) {
-      // Fallback or handle differently if actually strictly required by the package
-    }
-    connectedDevice = device;
+      connectedDevice = device;
+      _connectionStateController.add(BluetoothConnectionState.connected);
 
-    // Discover services and find the characteristic for data
-    List<BluetoothService> services = await device.discoverServices();
-    for (var service in services) {
-      for (var characteristic in service.characteristics) {
-        if (characteristic.properties.notify) {
-          await characteristic.setNotifyValue(true);
-          _dataSubscription = characteristic.lastValueStream.listen((value) {
-            _handleIncomingData(value);
-          });
+      // Listen for disconnection
+      device.connectionState.listen((state) {
+        _connectionStateController.add(state);
+        if (state == BluetoothConnectionState.disconnected) {
+          connectedDevice = null;
+          _targetCharacteristic = null;
+          _lastValueSubscription?.cancel();
+        }
+      });
+
+      // Discover services
+      List<BluetoothService> services = await device.discoverServices();
+      for (var service in services) {
+        if (service.uuid.toString().toUpperCase() == serviceUuid) {
+          for (var characteristic in service.characteristics) {
+            if (characteristic.uuid.toString().toUpperCase() == characteristicUuid) {
+              _targetCharacteristic = characteristic;
+              await _setupNotifications(characteristic);
+              break;
+            }
+          }
         }
       }
+    } catch (e) {
+      debugPrint("Connection error: $e");
+      rethrow;
     }
   }
 
-  void _handleIncomingData(List<int> value) {
-    // Assuming data is a float sent as bytes or a simple int
-    // This part depends on the specific hardware implementation
-    // For now, let's assume it's a single byte for simplicity or a 2-byte int
-    double voltage = value.isNotEmpty
-        ? value[0] / 51.0
-        : 0.0; // Mock mapping to 0-5V
-
-    currentRunVoltages.add(voltage);
-    _runDataController.add(voltage);
-
-    if (voltage > spikeThreshold) {
-      _processSpike();
+  Future<void> _setupNotifications(BluetoothCharacteristic characteristic) async {
+    if (characteristic.properties.notify) {
+      await characteristic.setNotifyValue(true);
+      _lastValueSubscription = characteristic.lastValueStream.listen((value) {
+        _handleIncomingRawData(value);
+      });
     }
   }
 
-  void _processSpike() {
-    int now = DateTime.now().millisecondsSinceEpoch;
-    if (startTime == null) {
-      startTime = DateTime.now();
-      gateTimes.add(0);
-      _gateCrossingController.add(0);
-    } else {
-      int offset = now - startTime!.millisecondsSinceEpoch;
-      // Simple debounce: only record a gate if it's been at least 500ms since the last one
-      if (gateTimes.isEmpty || offset - gateTimes.last > 500) {
-        gateTimes.add(offset);
-        _gateCrossingController.add(offset);
+  void _handleIncomingRawData(List<int> value) {
+    if (value.isEmpty) return;
+    String rawString = utf8.decode(value);
+    debugPrint("Received BLE data: $rawString");
+
+    try {
+      if (rawString.contains(',')) {
+        List<int> offsets = DataProcessingService.parseNodeTimingData(rawString);
+        _timingDataController.add(offsets);
       }
+    } catch (e) {
+      debugPrint("Error parsing timing data: $e");
     }
   }
 
-  void resetRun() {
-    currentRunVoltages.clear();
-    gateTimes.clear();
-    startTime = null;
+  Future<void> sendStartCommand() async {
+    await _writeString("START");
+  }
+
+  Future<void> sendStopCommand() async {
+    await _writeString("STOP");
+  }
+
+  Future<void> triggerWifiSync() async {
+    await _writeString("SYNC_WIFI");
+  }
+
+  Future<void> _writeString(String data) async {
+    if (_targetCharacteristic == null) return;
+    try {
+      await _targetCharacteristic!.write(utf8.encode(data));
+    } catch (e) {
+      debugPrint("Write error: $e");
+    }
+  }
+
+  Future<void> disconnect() async {
+    await connectedDevice?.disconnect();
+    connectedDevice = null;
+    _targetCharacteristic = null;
+    _lastValueSubscription?.cancel();
   }
 
   void dispose() {
-    _dataSubscription?.cancel();
-    _runDataController.close();
-    _gateCrossingController.close();
+    _connectionStateController.close();
+    _isScanningController.close();
+    _timingDataController.close();
+    _lastValueSubscription?.cancel();
   }
 }

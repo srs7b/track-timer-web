@@ -2,25 +2,39 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tt_flutter/services/data_processing_service.dart';
 
 void main() {
-  test('Peak detection identifies correctly spaced peaks above threshold', () {
-    // 100Hz = 10ms per sample
-    // Let's create an array of 200 samples (2000ms = 2s)
-    List<double> voltages = List.filled(200, 1.0);
+  group('DataProcessingService.parseNodeTimingData', () {
+    test('correctly parses 5 unique nodes and normalizes time', () {
+      const rawData = "1,1000,2,2500,3,4500,4,6000,5,8000";
+      final offsets = DataProcessingService.parseNodeTimingData(rawData);
 
-    // Peak 1 at index 50 (500ms)
-    voltages[50] = 3.5;
-    // Peak 2 at index 150 (1500ms)
-    voltages[150] = 3.2;
+      expect(offsets.length, 5);
+      // Normalized: t - 1000
+      expect(offsets, [0, 1500, 3500, 5000, 7000]);
+    });
 
-    List<int> offsets = DataProcessingService.detectPeaks(
-      voltages,
-      sampleRateHz: 100,
-      threshold: 2.5,
-      minPeakDistanceMs: 500,
-    );
+    test('handles redundant hits by keeping the earliest one per node', () {
+      // Node 2 has two hits: 2500 and 2600. Node 1 has a late hit too.
+      const rawData = "1,1000,2,2500,3,4500,2,2600,4,6000,5,8000,1,9000";
+      final offsets = DataProcessingService.parseNodeTimingData(rawData);
 
-    expect(offsets.length, 2);
-    expect(offsets[0], 500);
-    expect(offsets[1], 1500);
+      expect(offsets.length, 5);
+      expect(offsets, [0, 1500, 3500, 5000, 7000]);
+    });
+
+    test('throws FormatException if node count is not exactly 5', () {
+      const rawData = "1,1000,2,2500,3,4500,4,6000"; // Only 4 nodes
+      expect(
+        () => DataProcessingService.parseNodeTimingData(rawData),
+        throwsFormatException,
+      );
+    });
+
+    test('throws FormatException if data format is invalid (odd number of parts)', () {
+      const rawData = "1,1000,2,2500,3"; 
+      expect(
+        () => DataProcessingService.parseNodeTimingData(rawData),
+        throwsFormatException,
+      );
+    });
   });
 }

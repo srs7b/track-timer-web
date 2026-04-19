@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../services/database_service.dart';
 import '../models/user_model.dart';
-import '../models/run_model.dart';
-import '../services/mock_data_service.dart';
+import '../services/ble_service.dart';
+import '../theme/style_constants.dart';
+import '../widgets/velocity_card.dart';
+import '../widgets/velocity_button.dart';
+import '../widgets/status_indicator.dart';
 
 class RecordScreen extends StatefulWidget {
   const RecordScreen({super.key});
@@ -13,283 +18,411 @@ class RecordScreen extends StatefulWidget {
 
 class _RecordScreenState extends State<RecordScreen> {
   final DatabaseService _db = DatabaseService();
+  final BleService _bleService = BleService();
   List<User> _users = [];
   User? _selectedUser;
   int _selectedDistance = 100;
+  String _selectedSurface = 'Synthetic Track (Outdoor)';
 
-  bool _isBleScanning = false;
-  bool _isBleConnected = false;
+  BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
   bool _isWifiOn = false;
 
-  final TextEditingController _nodesController = TextEditingController(
-    text: "25.0, 25.0, 25.0, 25.0",
-  );
+  StreamSubscription? _connectionSub;
+
+  List<double> _nodeDistances = [10.0, 20.0, 30.0, 40.0];
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
+    _setupBleListeners();
+  }
+
+  @override
+  void dispose() {
+    _connectionSub?.cancel();
+    _bleService.dispose();
+    super.dispose();
+  }
+
+  void _setupBleListeners() {
+    _connectionSub = _bleService.connectionState.listen((state) {
+      if (mounted) setState(() => _connectionState = state);
+    });
+  }
+
+  void _editNodeDistances() async {
+    List<TextEditingController> controllers = _nodeDistances
+        .map((d) => TextEditingController(text: d.toStringAsFixed(1)))
+        .toList();
+
+    final bool? saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: VelocityColors.surfaceLight,
+          title: Text('CONFIGURE GATE SEGMENTS', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary, fontSize: 13)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(controllers.length, (i) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: TextField(
+                    controller: controllers[i],
+                    style: VelocityTextStyles.body,
+                    decoration: InputDecoration(
+                      labelText: 'SEGMENT ${i + 1} DISTANCE (m)',
+                      labelStyle: VelocityTextStyles.dimBody,
+                      enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: VelocityColors.textDim)),
+                      focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: VelocityColors.primary)),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                );
+              }),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('CANCEL', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text('UPDATE', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (saved == true) {
+      setState(() {
+        _nodeDistances = controllers.map((c) => double.tryParse(c.text) ?? 0.0).toList();
+      });
+    }
   }
 
   Future<void> _loadUsers() async {
     final users = await _db.getAllUsers();
-    setState(() {
-      _users = users;
-    });
+    if (mounted) {
+      setState(() {
+        _users = users;
+        if (_users.isNotEmpty && _selectedUser == null) {
+          _selectedUser = _users.first;
+        }
+      });
+    }
   }
 
-  void _toggleBleScan() {
-    setState(() {
-      _isBleScanning = true;
-    });
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _isBleScanning = false;
-          _isBleConnected = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Simulated BLE Connection Successful')),
-        );
-      }
-    });
+  Future<void> _showBleScanDialog() async {
+    _bleService.startScan();
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: VelocityColors.surfaceLight,
+        title: Text('SCANNING FOR HARDWARE', style: VelocityTextStyles.technical.copyWith(fontSize: 14, color: VelocityColors.primary)),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: StreamBuilder<List<ScanResult>>(
+            stream: _bleService.scanResults,
+            builder: (context, snapshot) {
+              final results = snapshot.data ?? [];
+              if (results.isEmpty) {
+                return const Center(child: CircularProgressIndicator(color: VelocityColors.primary));
+              }
+              return ListView.builder(
+                itemCount: results.length,
+                itemBuilder: (context, index) {
+                  final r = results[index];
+                  final name = r.device.platformName.isNotEmpty ? r.device.platformName : 'Unknown Node';
+                  return ListTile(
+                    title: Text(name, style: VelocityTextStyles.body),
+                    subtitle: Text(r.device.remoteId.toString(), style: VelocityTextStyles.dimBody.copyWith(fontSize: 10)),
+                    trailing: const Icon(Icons.link, color: VelocityColors.primary),
+                    onTap: () {
+                      _bleService.stopScan();
+                      _bleService.connectToDevice(r.device);
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _bleService.stopScan();
+              Navigator.pop(context);
+            },
+            child: Text('CANCEL', style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _toggleWifi() {
-    setState(() {
-      _isWifiOn = !_isWifiOn;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Record Run')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+  void _showDistancePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VelocityColors.surfaceLight,
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Status Card
-            Card(
-              elevation: 4,
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    Column(
-                      children: [
-                        Icon(
-                          Icons.bluetooth,
-                          size: 40,
-                          color: _isBleConnected ? Colors.blue : Colors.grey,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _isBleConnected
-                              ? 'BLE Connected'
-                              : 'BLE Disconnected',
-                        ),
-                      ],
-                    ),
-                    Column(
-                      children: [
-                        Icon(
-                          Icons.wifi_tethering,
-                          size: 40,
-                          color: _isWifiOn ? Colors.green : Colors.grey,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(_isWifiOn ? 'System Ready' : 'System Off'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Connection Controls
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isBleScanning ? null : _toggleBleScan,
-                    icon: _isBleScanning
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.bluetooth_searching),
-                    label: Text(_isBleConnected ? 'Rescan BLE' : 'Scan BLE'),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isWifiOn ? Colors.green.shade700 : null,
-                      foregroundColor: _isWifiOn ? Colors.white : null,
-                    ),
-                    onPressed: _toggleWifi,
-                    icon: Icon(
-                      _isWifiOn ? Icons.power_settings_new : Icons.power,
-                    ),
-                    label: Text(_isWifiOn ? 'Power Off' : 'Power On'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            const Divider(),
+            Text('CHOOSE TEST DISTANCE', style: VelocityTextStyles.dimBody.copyWith(fontSize: 12, letterSpacing: 2)),
             const SizedBox(height: 16),
-
-            // Run Configuration
-            Text(
-              'Run Configuration',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-
-            DropdownButtonFormField<User>(
-              decoration: const InputDecoration(
-                labelText: 'Athlete',
-                border: OutlineInputBorder(),
-              ),
-              items: _users
-                  .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
-                  .toList(),
-              initialValue: _selectedUser,
-              onChanged: (val) => setState(() => _selectedUser = val),
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    decoration: const InputDecoration(
-                      labelText: 'Distance Class',
-                      border: OutlineInputBorder(),
-                    ),
-                    initialValue: _selectedDistance,
-                    items: const [
-                      DropdownMenuItem(value: 100, child: Text('100m')),
-                      DropdownMenuItem(value: 200, child: Text('200m')),
-                      DropdownMenuItem(value: 400, child: Text('400m')),
-                    ],
-                    onChanged: (val) =>
-                        setState(() => _selectedDistance = val ?? 100),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _nodesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Node Distances (csv)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              ),
-              onPressed: (_isBleConnected && _isWifiOn && _selectedUser != null)
-                  ? () async {
-                      List<double> distances = [];
-                      try {
-                        distances = _nodesController.text
-                            .split(',')
-                            .map((e) => double.parse(e.trim()))
-                            .toList();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Invalid node distances CSV.'),
-                          ),
-                        );
-                        return;
-                      }
-
-                      double totalDistance = distances.fold(
-                        0.0,
-                        (sum, d) => sum + d,
-                      );
-                      if ((totalDistance - _selectedDistance).abs() > 10.0) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Warning: Node distances sum to ${totalDistance}m, mismatching the ${_selectedDistance}m class!',
-                            ),
-                            backgroundColor: Colors.orange,
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                      }
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Recording mock run for ${_selectedUser!.name}...',
-                          ),
-                        ),
-                      );
-
-                      await Future.delayed(const Duration(seconds: 1));
-
-                      final mockData = MockDataService.generateMockRunData(
-                        durationMs: 10500,
-                      );
-                      List<int> allOffsets =
-                          mockData['trueGateOffsets'] as List<int>;
-                      List<int> gateOffsets = allOffsets
-                          .take(distances.length + 1)
-                          .toList();
-
-                      final newRun = Run(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        name: 'Recorded Run (${_selectedDistance}m)',
-                        timestamp: DateTime.now(),
-                        nodeDistances: distances,
-                        voltageData: mockData['voltageData'] as List<double>,
-                        gateTimeOffsets: gateOffsets.isNotEmpty
-                            ? gateOffsets
-                            : [0, 2000],
-                        userId: _selectedUser!.id,
-                        distanceClass: _selectedDistance,
-                        notes: 'Generated via Record Tab',
-                      );
-
-                      await DatabaseService().saveRun(newRun);
-
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Run recorded successfully!'),
-                          ),
-                        );
-                      }
-                    }
-                  : null,
-              child: const Text(
-                'Start Recording',
-                style: TextStyle(fontSize: 18),
-              ),
-            ),
+            ...[100, 200, 400].map((d) => ListTile(
+              title: Center(child: Text('${d}M SPRINT', style: VelocityTextStyles.heading.copyWith(fontSize: 18, color: _selectedDistance == d ? VelocityColors.primary : VelocityColors.textBody))),
+              onTap: () {
+                setState(() => _selectedDistance = d);
+                Navigator.pop(context);
+              },
+            )),
           ],
         ),
       ),
     );
   }
+
+  void _showSurfacePicker() {
+    final surfaces = ['Synthetic Track (Outdoor)', 'Natural Grass', 'Indoor Track', 'Sand / Beach'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VelocityColors.surfaceLight,
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('CHOOSE SURFACE TYPE', style: VelocityTextStyles.dimBody.copyWith(fontSize: 12, letterSpacing: 2)),
+            const SizedBox(height: 16),
+            ...surfaces.map((s) => ListTile(
+              title: Center(child: Text(s.toUpperCase(), style: VelocityTextStyles.body.copyWith(color: _selectedSurface == s ? VelocityColors.primary : VelocityColors.textBody))),
+              onTap: () {
+                setState(() => _selectedSurface = s);
+                Navigator.pop(context);
+              },
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isConnected = _connectionState == BluetoothConnectionState.connected;
+
+    return Scaffold(
+      backgroundColor: VelocityColors.black,
+      appBar: AppBar(
+        title: Text('TRACK.TIME', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textBody, letterSpacing: 4)),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          children: [
+            // Status Section
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                   Expanded(
+                    child: VelocityCard(
+                      borderColor: isConnected ? VelocityColors.primary.withOpacity(0.3) : null,
+                      glow: isConnected,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.bluetooth, color: isConnected ? VelocityColors.primary : VelocityColors.textDim, size: 20),
+                          const SizedBox(height: 12),
+                          StatusIndicator(
+                            label: 'BLE HARDWARE',
+                            value: isConnected ? (_bleService.connectedDevice?.platformName ?? 'CHRONO-GATE_01') : 'DISCONNECTED',
+                            active: isConnected,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                   Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _isWifiOn = !_isWifiOn),
+                      child: VelocityCard(
+                        borderColor: _isWifiOn ? VelocityColors.primary.withOpacity(0.3) : null,
+                        glow: _isWifiOn,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.wifi_tethering, color: _isWifiOn ? VelocityColors.primary : VelocityColors.textDim, size: 20),
+                            const SizedBox(height: 12),
+                            StatusIndicator(
+                              label: 'WIFI SYNC',
+                              value: _isWifiOn ? 'CONNECTED' : 'STANDBY',
+                              active: _isWifiOn,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            
+            // Configuration Section
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: VelocityColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: VelocityColors.textDim.withOpacity(0.05)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('CONFIGURATION', style: VelocityTextStyles.dimBody.copyWith(fontSize: 10, letterSpacing: 2)),
+                    const SizedBox(height: 24),
+                    
+                    _buildConfigLabel('ATHLETE SELECTION'),
+                    const SizedBox(height: 12),
+                    _buildDropdown<User>(
+                      value: _selectedUser,
+                      items: _users.map((u) => DropdownMenuItem(value: u, child: Text(u.name))).toList(),
+                      hint: 'Select Athlete',
+                      onChanged: (val) => setState(() => _selectedUser = val),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildConfigLabel('TEST DISTANCE'),
+                              const SizedBox(height: 12),
+                              _buildPillSelector('${_selectedDistance}m', onTap: _showDistancePicker),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildConfigLabel('SEGMENT CONFIG'),
+                              const SizedBox(height: 12),
+                              _buildPillSelector('${_nodeDistances.length} GATES', icon: Icons.straighten, onTap: _editNodeDistances),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    _buildConfigLabel('SURFACE TYPE'),
+                    const SizedBox(height: 12),
+                    _buildPillSelector(_selectedSurface, icon: Icons.expand_more, onTap: _showSurfacePicker),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 40),
+            
+            // Primary Action
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: VelocityButton(
+                label: isConnected ? 'START SESSION' : 'HARDWARE OFFLINE',
+                onPressed: isConnected ? () {} : null,
+                icon: Icons.play_arrow,
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            
+            // Secondary Actions
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: SizedBox(
+                width: double.infinity,
+                child: VelocityButton(
+                  label: 'SCAN FOR HARDWARE',
+                  primary: false,
+                  icon: Icons.search,
+                  onPressed: _showBleScanDialog,
+                ),
+              ),
+            ),
+            const SizedBox(height: 60),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConfigLabel(String label) {
+    return Text(
+      label,
+      style: VelocityTextStyles.dimBody.copyWith(fontSize: 9, letterSpacing: 1),
+    );
+  }
+
+  Widget _buildPillSelector(String value, {IconData? icon, VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: VelocityColors.black,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: VelocityColors.textDim.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(child: Text(value, style: VelocityTextStyles.body.copyWith(fontWeight: FontWeight.bold, fontSize: 12), overflow: TextOverflow.ellipsis)),
+            Icon(icon ?? Icons.edit, size: 14, color: VelocityColors.textDim),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown<T>({T? value, required List<DropdownMenuItem<T>> items, required String hint, required ValueChanged<T?> onChanged}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: VelocityColors.black,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: VelocityColors.textDim.withOpacity(0.2)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          items: items,
+          hint: Text(hint, style: VelocityTextStyles.dimBody),
+          onChanged: onChanged,
+          dropdownColor: VelocityColors.surfaceLight,
+          isExpanded: true,
+          icon: const Icon(Icons.group, size: 16, color: VelocityColors.textDim),
+        ),
+      ),
+    );
+  }
+
 }

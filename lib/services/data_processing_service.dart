@@ -1,34 +1,35 @@
 class DataProcessingService {
-  /// Detects peaks in a voltage array that exceed a certain threshold.
-  ///
-  /// Returns a list of time offsets (in milliseconds) where the peaks occurred.
-  /// [sampleRateHz] defaults to 100, meaning each index is 10ms.
-  /// [threshold] is the voltage above which we consider the beam broken.
-  /// [minPeakDistanceMs] is the minimum time between legitimate peaks to avoid
-  /// counting the same bodily obstruction (e.g., arms then torso) as multiple passes.
-  static List<int> detectPeaks(
-    List<double> voltages, {
-    int sampleRateHz = 100,
-    double threshold = 2.5,
-    int minPeakDistanceMs = 300,
-  }) {
-    List<int> peakOffsetsMs = [];
-    int sampleDurationMs = (1000 / sampleRateHz).round();
+  /// Parses a comma-separated timing string from the nodes.
+  /// Format: "node1,time1,node2,time2,..."
+  /// Can handle redundant hits by keeping only the earliest hit for each node.
+  /// Enforces that exactly 5 unique nodes must be present.
+  /// Normalizes the first node hit to time 0.
+  /// Returns a list of time offsets (ms) in chronological order.
+  static List<int> parseNodeTimingData(String rawData) {
+    List<String> parts = rawData.split(',').where((s) => s.trim().isNotEmpty).toList();
+    if (parts.length % 2 != 0) {
+      throw const FormatException('Invalid timing data: expected even number of parts (node,time pairs)');
+    }
 
-    int lastPeakTimeMs = -minPeakDistanceMs; // Allow a peak at time 0
+    // Map each unique node ID to its EARLIEST hit time
+    Map<int, int> nodeEarliestHits = {};
+    for (int i = 0; i < parts.length; i += 2) {
+      int nodeId = int.parse(parts[i].trim());
+      int timePassed = int.parse(parts[i + 1].trim());
 
-    for (int i = 0; i < voltages.length; i++) {
-      if (voltages[i] > threshold) {
-        int currentTimeMs = i * sampleDurationMs;
-
-        // If enough time has passed since the last recorded peak
-        if (currentTimeMs - lastPeakTimeMs >= minPeakDistanceMs) {
-          peakOffsetsMs.add(currentTimeMs);
-          lastPeakTimeMs = currentTimeMs;
-        }
+      if (!nodeEarliestHits.containsKey(nodeId) || timePassed < nodeEarliestHits[nodeId]!) {
+        nodeEarliestHits[nodeId] = timePassed;
       }
     }
 
-    return peakOffsetsMs;
+    if (nodeEarliestHits.length != 5) {
+      throw FormatException('Invalid run: expected timings for 5 unique nodes, but got ${nodeEarliestHits.length}');
+    }
+
+    // Sort by time to ensure normalization is correct
+    var sortedTimes = nodeEarliestHits.values.toList()..sort();
+
+    int baseTime = sortedTimes.first;
+    return sortedTimes.map((t) => t - baseTime).toList();
   }
 }

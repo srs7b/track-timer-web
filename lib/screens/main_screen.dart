@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'home_screen.dart';
 import 'comparison_screen.dart';
 import 'record_screen.dart';
 import 'leaderboard_screen.dart';
 import 'chat_screen.dart';
+import '../services/navigation_provider.dart';
+
+import '../theme/style_constants.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -13,8 +17,6 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
-
   final List<Widget> _pages = [
     const HomeScreen(), // Tab 1: Log
     const ComparisonScreen(), // Tab 2: Comparison
@@ -25,32 +27,94 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final nav = Provider.of<NavigationProvider>(context);
+
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _pages),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed, // To show 5 items without shifting
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Log'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Compare',
+      backgroundColor: VelocityColors.black,
+      body: IndexedStack(index: nav.currentIndex, children: _pages),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: VelocityColors.textDim.withOpacity(0.1),
+              width: 1,
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle, size: 36),
-            label: 'Record',
+        ),
+        child: BottomNavigationBar(
+          currentIndex: nav.currentIndex,
+          onTap: (index) {
+            nav.setTab(index);
+          },
+          backgroundColor: VelocityColors.black,
+          selectedItemColor: VelocityColors.textBody,
+          unselectedItemColor: VelocityColors.textDim,
+          type: BottomNavigationBarType.fixed,
+          showSelectedLabels: true,
+          showUnselectedLabels: true,
+          selectedLabelStyle: VelocityTextStyles.dimBody.copyWith(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.leaderboard),
-            label: 'Leaderboard',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
-        ],
+          unselectedLabelStyle: VelocityTextStyles.dimBody.copyWith(fontSize: 10),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.analytics_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.analytics),
+              ),
+              label: 'LOG',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.insights_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.insights),
+              ),
+              label: 'COMPARE',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.add_circle_outline),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.add_circle),
+              ),
+              label: 'RECORD',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.emoji_events_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.emoji_events),
+              ),
+              label: 'RANK',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.chat_bubble_outline),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.chat_bubble),
+              ),
+              label: 'COACH',
+            ),
+          ],
+        ),
       ),
     );
   }

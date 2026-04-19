@@ -39,24 +39,24 @@ class DatabaseService {
       )
     ''');
 
-    // Create a default user immediately since existing runs need to belong somewhere
-    await db.execute('''
-      INSERT INTO users (id, name, createdDate, gender) 
-      VALUES ('default_user', 'The Big Yahu', '${DateTime.now().toIso8601String()}', 'M')
-    ''');
-
     await db.execute('''
       CREATE TABLE runs (
         id TEXT PRIMARY KEY,
         name TEXT,
         timestamp TEXT,
         nodeDistances TEXT,
-        voltageData TEXT,
         gateTimeOffsets TEXT,
         userId TEXT,
         distanceClass INTEGER,
         notes TEXT,
         FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE settings (
+        id TEXT PRIMARY KEY,
+        value TEXT
       )
     ''');
   }
@@ -148,6 +148,13 @@ class DatabaseService {
     return result.map((json) => User.fromMap(json)).toList();
   }
 
+  Future<User?> getUser(String id) async {
+    final db = await database;
+    final result = await db.query('users', where: 'id = ?', whereArgs: [id]);
+    if (result.isEmpty) return null;
+    return User.fromMap(result.first);
+  }
+
   Future<void> deleteUser(String id) async {
     final db = await database;
     await db.delete('users', where: 'id = ?', whereArgs: [id]);
@@ -160,6 +167,37 @@ class DatabaseService {
   Future<void> deleteRun(String id) async {
     final db = await database;
     await db.delete('runs', where: 'id = ?', whereArgs: [id]);
+    _dbChangeController.add(null);
+  }
+
+  Future<void> saveSetting(String id, String value) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {'id': id, 'value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getSetting(String id) async {
+    final db = await database;
+    final result = await db.query('settings', where: 'id = ?', whereArgs: [id]);
+    if (result.isEmpty) return null;
+    return result.first['value'] as String;
+  }
+
+  Future<void> clearAllData() async {
+    final db = await database;
+    await db.delete('runs');
+    await db.delete('users');
+    _dbChangeController.add(null);
+  }
+
+  Future<void> resetDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, 'runs.db');
+    await deleteDatabase(path);
+    _database = null;
     _dbChangeController.add(null);
   }
 }
