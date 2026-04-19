@@ -18,6 +18,7 @@ class SeedDataService {
 
     // 1. Ensure Athletes
     final athletes = [
+      {'id': 'user_1', 'name': 'The Big Yahu', 'gender': 'M'},
       {'id': 'user_2', 'name': 'Sonic Sarah', 'gender': 'F'},
       {'id': 'user_3', 'name': 'Rocket Rick', 'gender': 'M'},
       {'id': 'user_4', 'name': 'Turbo Tyler', 'gender': 'M'},

@@ -7,7 +7,6 @@ import '../models/run_model.dart';
 import 'run_details_screen.dart';
 import 'settings_screen.dart';
 import '../theme/style_constants.dart';
-import '../widgets/velocity_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,7 +20,12 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Run> _runs = [];
   List<User> _users = [];
   bool _isLoading = true;
-  String _filter = 'All';
+  
+  // Advanced Filters
+  String _timeFilter = 'All'; // All, 7, 30
+  String _genderFilter = 'All'; // All, M, F
+  String? _athleteIdFilter; // User ID or null for 'All'
+  
   late StreamSubscription<void> _dbSub;
 
   @override
@@ -58,22 +62,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  double _getTopSpeed(List<Run> runs) {
-    if (runs.isEmpty) return 0.0;
-    double maxSpeed = 0.0;
-    for (var run in runs) {
-      if (run.gateTimeOffsets.length < 2) continue;
-      double speed = run.distanceClass / run.totalTimeSeconds;
-      if (speed > maxSpeed) maxSpeed = speed;
-    }
-    return maxSpeed;
+  bool _isPB(Run run) {
+    // A run is a PB if it is the fastest for that athlete at that distance
+    final athleteRuns = _runs.where((r) => r.userId == run.userId && r.distanceClass == run.distanceClass).toList();
+    if (athleteRuns.isEmpty) return false;
+    
+    double bestTime = athleteRuns.map((r) => r.totalTimeSeconds).reduce((a, b) => a < b ? a : b);
+    return run.totalTimeSeconds <= bestTime;
   }
 
   @override
   Widget build(BuildContext context) {
-    List<Run> filteredRuns = _filter == 'All' 
-        ? _runs 
-        : _runs.where((r) => r.distanceClass.toString() == _filter).toList();
+    // Apply Filters
+    List<Run> filteredRuns = _runs.where((run) {
+      // 1. Time Filter
+      if (_timeFilter != 'All') {
+        final days = int.parse(_timeFilter);
+        final cutoff = DateTime.now().subtract(Duration(days: days));
+        if (run.timestamp.isBefore(cutoff)) return false;
+      }
+      
+      final user = _users.firstWhere((u) => u.id == run.userId, orElse: () => User(id: '', name: '', createdDate: DateTime.now(), gender: 'Other'));
+      
+      // 2. Gender Filter
+      if (_genderFilter != 'All' && user.gender != _genderFilter) return false;
+      
+      // 3. Athlete Filter
+      if (_athleteIdFilter != null && run.userId != _athleteIdFilter) return false;
+      
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: VelocityColors.black,
@@ -94,40 +112,44 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: VelocityColors.primary))
           : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Dashboard Summary
-                Padding(
-                  padding: const EdgeInsets.all(16),
+                // Filter Tray
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
-                      _buildSummaryItem('TOTAL RUNS', filteredRuns.length.toString()),
-                      const SizedBox(width: 16),
-                      _buildSummaryItem('TOP SPEED', '${_getTopSpeed(filteredRuns).toStringAsFixed(2)}m/s', color: VelocityColors.primary),
+                      _buildPillFilter(
+                        icon: Icons.calendar_today_outlined, 
+                        label: _timeFilter == 'All' ? 'All Time' : 'Last $_timeFilter Days',
+                        onTap: () => _showTimePicker(),
+                        isSelected: _timeFilter != 'All',
+                      ),
+                      const SizedBox(width: 12),
+                      _buildPillFilter(
+                        label: 'Gender: $_genderFilter',
+                        onTap: () => _showGenderPicker(),
+                        isSelected: _genderFilter != 'All',
+                      ),
+                      const SizedBox(width: 12),
+                      _buildPillFilter(
+                        label: 'Athlete: ${_users.firstWhere((u) => u.id == _athleteIdFilter, orElse: () => User(id: '', name: 'All', createdDate: DateTime.now(), gender: '')).name}',
+                        onTap: () => _showAthletePicker(),
+                        isSelected: _athleteIdFilter != null,
+                      ),
                     ],
                   ),
                 ),
                 
-                // Filter Bar
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: Row(
-                    children: ['All', '100', '200', '400'].map((f) {
-                      bool isSelected = _filter == f;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(f == 'All' ? 'ALL SESSIONS' : '${f}M SPRINT', style: VelocityTextStyles.dimBody.copyWith(fontSize: 10, color: isSelected ? VelocityColors.black : VelocityColors.textDim)),
-                          selected: isSelected,
-                          onSelected: (val) => setState(() => _filter = f),
-                          backgroundColor: VelocityColors.surfaceLight,
-                          selectedColor: VelocityColors.textBody,
-                          showCheckmark: false,
-                          side: BorderSide.none,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
-                        ),
-                      );
-                    }).toList(),
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('RECORDS INDEX', style: VelocityTextStyles.technical.copyWith(fontSize: 12, letterSpacing: 1.5, color: VelocityColors.textDim)),
+                      Text('IDX-${filteredRuns.length.toString().padLeft(3, '0')}', style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim.withOpacity(0.5))),
+                    ],
                   ),
                 ),
                 
@@ -141,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemBuilder: (context, index) {
                             final run = filteredRuns[index];
                             final user = _users.firstWhere((u) => u.id == run.userId, orElse: () => User(id: '', name: 'Unknown', createdDate: DateTime.now(), gender: 'Other'));
-                            return _buildRunCard(run, user);
+                            return _buildRecordCard(run, user);
                           },
                         ),
                 ),
@@ -150,94 +172,150 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSummaryItem(String label, String value, {Color? color}) {
-    return Expanded(
+  Widget _buildPillFilter({IconData? icon, required String label, required VoidCallback onTap, bool isSelected = false}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(100),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: VelocityColors.surfaceLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: VelocityColors.textDim.withOpacity(0.05)),
+          color: isSelected ? VelocityColors.textBody : VelocityColors.black,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: VelocityColors.textDim.withOpacity(0.3)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text(label, style: VelocityTextStyles.dimBody.copyWith(fontSize: 10, letterSpacing: 1.5)),
-            const SizedBox(height: 8),
-            Text(value, style: VelocityTextStyles.heading.copyWith(fontSize: 28, color: color ?? VelocityColors.textBody)),
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: isSelected ? VelocityColors.black : VelocityColors.textBody),
+              const SizedBox(width: 8),
+            ],
+            Text(label, style: VelocityTextStyles.body.copyWith(fontSize: 12, color: isSelected ? VelocityColors.black : VelocityColors.textBody, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+            const SizedBox(width: 4),
+            Icon(Icons.keyboard_arrow_down, size: 16, color: isSelected ? VelocityColors.black : VelocityColors.textDim),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildRunCard(Run run, User user) {
-    final dateFormat = DateFormat('MMM dd, yyyy · HH:mm');
-    final avgSpeed = (run.distanceClass ?? 100) / run.totalTimeSeconds;
-    
-    return VelocityCard(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => RunDetailsScreen(run: run)),
-        ).then((_) => _loadData());
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                   Text('${run.distanceClass}M SPRINT', style: VelocityTextStyles.subHeading.copyWith(letterSpacing: 1)),
-                  const SizedBox(height: 4),
-                  Text(dateFormat.format(run.timestamp).toUpperCase(), style: VelocityTextStyles.dimBody.copyWith(fontSize: 10)),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: VelocityColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${run.totalTimeSeconds.toStringAsFixed(2)}S',
-                  style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              _buildMetric('AVG VELOCITY', '${avgSpeed.toStringAsFixed(2)}m/s'),
-              const SizedBox(width: 24),
-              _buildMetric('ATHLETE', user.name.toUpperCase()),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              'VIEW REPORT >',
-              style: VelocityTextStyles.technical.copyWith(fontSize: 10, letterSpacing: 1, color: VelocityColors.textDim),
-            ),
-          ),
-        ],
+  void _showTimePicker() {
+    _showPicker('TIME RANGE', {
+      'All': 'All Time',
+      '7': 'Last 7 Days',
+      '30': 'Last 30 Days',
+    }, (val) => setState(() => _timeFilter = val));
+  }
+
+  void _showGenderPicker() {
+    _showPicker('GENDER', {
+      'All': 'All Genders',
+      'M': 'Male',
+      'F': 'Female',
+    }, (val) => setState(() => _genderFilter = val));
+  }
+
+  void _showAthletePicker() {
+    final Map<String, String> options = {'All': 'All Athletes'};
+    for (var u in _users) {
+      options[u.id] = u.name;
+    }
+    _showPicker('SELECT ATHLETE', options, (val) => setState(() => _athleteIdFilter = val == 'All' ? null : val));
+  }
+
+  void _showPicker(String title, Map<String, String> options, Function(String) onSelect) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: VelocityColors.surfaceLight,
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: VelocityTextStyles.technical.copyWith(fontSize: 12, letterSpacing: 2)),
+            const SizedBox(height: 16),
+            ...options.entries.map((e) => ListTile(
+              title: Text(e.value, style: VelocityTextStyles.body, textAlign: TextAlign.center),
+              onTap: () {
+                onSelect(e.key);
+                Navigator.pop(context);
+              },
+            )),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildMetric(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: VelocityTextStyles.dimBody.copyWith(fontSize: 8, letterSpacing: 1)),
-        const SizedBox(height: 4),
-        Text(value, style: VelocityTextStyles.body.copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
-      ],
+  Widget _buildRecordCard(Run run, User user) {
+    final dateFormat = DateFormat('MMM dd, yyyy · HH:mm:ss');
+    final bool isPB = _isPB(run);
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => RunDetailsScreen(run: run)),
+          ).then((_) => _loadData());
+        },
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: VelocityColors.surfaceLight,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${user.gender} / ${run.distanceClass}M DASH', style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim)),
+                        const SizedBox(height: 12),
+                        Text(user.name, style: VelocityTextStyles.heading.copyWith(fontSize: 24, letterSpacing: 0.5)),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('${run.totalTimeSeconds.toStringAsFixed(2)}s', style: VelocityTextStyles.heading.copyWith(fontSize: 24)),
+                      if (isPB) ...[
+                        const SizedBox(height: 4),
+                        Text('NEW PB', style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Divider(color: Colors.white, thickness: 0.05, height: 1),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(dateFormat.format(run.timestamp).toUpperCase(), style: VelocityTextStyles.technical.copyWith(fontSize: 9, color: VelocityColors.textDim)),
+                  Row(
+                    children: [
+                      Icon(Icons.share_outlined, size: 18, color: VelocityColors.textDim),
+                      const SizedBox(width: 16),
+                      InkWell(
+                        onTap: () => _db.deleteRun(run.id),
+                        child: Icon(Icons.delete_outline, size: 18, color: VelocityColors.textDim)
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

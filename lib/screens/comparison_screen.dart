@@ -5,8 +5,6 @@ import '../models/run_model.dart';
 import '../models/user_model.dart';
 import '../services/database_service.dart';
 import '../theme/style_constants.dart';
-import '../widgets/velocity_card.dart';
-import '../widgets/velocity_button.dart';
 
 class _ComparisonSeries {
   final String id; // Source ID (run id or pattern id)
@@ -106,11 +104,43 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
     List<FlSpot> velSpots = [];
     List<FlSpot> accelSpots = [];
 
-    for (int i = 0; i < times.length; i++) {
-      if (i < positions.length) posSpots.add(FlSpot(times[i], positions[i]));
-      if (i < vels.length) velSpots.add(FlSpot(times[i], vels[i]));
-      if (i < accels.length) accelSpots.add(FlSpot(times[i], accels[i]));
+    double maxTime = times.isNotEmpty ? times.last : 0.0;
+    
+    // Interpolate for smooth graph (0.05s resolution)
+    for (double t = 0; t <= maxTime; t += 0.05) {
+      // Find the segment containing time t
+      int segmentIdx = times.indexWhere((point) => point >= t) - 1;
+      if (segmentIdx < 0) segmentIdx = 0;
+      if (segmentIdx >= vels.length) segmentIdx = vels.length - 1;
+
+      double weight = 0;
+      if (segmentIdx < times.length - 1) {
+        double range = times[segmentIdx + 1] - times[segmentIdx];
+        if (range > 0) {
+          weight = (t - times[segmentIdx]) / range;
+        }
+      }
+
+      // Velocity Interp
+      double v1 = vels[segmentIdx];
+      double v2 = segmentIdx + 1 < vels.length ? vels[segmentIdx + 1] : v1;
+      velSpots.add(FlSpot(t, v1 + (v2 - v1) * weight));
+
+      // Accel Interp
+      double a1 = accels[segmentIdx];
+      double a2 = segmentIdx + 1 < accels.length ? accels[segmentIdx + 1] : a1;
+      accelSpots.add(FlSpot(t, a1 + (a2 - a1) * weight));
+
+      // Position Interp
+      double p1 = positions[segmentIdx];
+      double p2 = segmentIdx + 1 < positions.length ? positions[segmentIdx + 1] : p1;
+      posSpots.add(FlSpot(t, p1 + (p2 - p1) * weight));
     }
+
+    // Add exactly the last point for accuracy
+    posSpots.add(FlSpot(maxTime, positions.last));
+    velSpots.add(FlSpot(maxTime, vels.last));
+    accelSpots.add(FlSpot(maxTime, accels.last));
 
     return _ComparisonSeries(
       id: id,
@@ -119,7 +149,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
       posSpots: posSpots,
       velSpots: velSpots,
       accelSpots: accelSpots,
-      maxTime: times.isNotEmpty ? times.last : 0.0,
+      maxTime: maxTime,
     );
   }
 
@@ -170,15 +200,16 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
             itemCount: _allRuns.length,
             itemBuilder: (context, index) {
               final run = _allRuns[index];
+              final user = _allUsers.firstWhere((u) => u.id == run.userId, orElse: () => User(id: '', name: 'Athlete', createdDate: DateTime.now(), gender: ''));
               final isAlreadyAdded = _seriesList.any((s) => s.id == run.id);
               return ListTile(
                 enabled: !isAlreadyAdded,
-                title: Text(run.name.toUpperCase(), style: VelocityTextStyles.body.copyWith(
+                title: Text('${user.name}: ${run.name}'.toUpperCase(), style: VelocityTextStyles.body.copyWith(
                   color: isAlreadyAdded ? VelocityColors.textDim : VelocityColors.textBody,
                 )),
                 subtitle: Text('${run.distanceClass}M · ${run.totalTimeSeconds.toStringAsFixed(2)}S', style: VelocityTextStyles.dimBody),
                 onTap: () {
-                  _addSeriesToComparison(run.id, run.name, run);
+                  _addSeriesToComparison(run.id, '${user.name.split(' ').first}: ${run.distanceClass}m', run);
                   Navigator.pop(context);
                 },
               );
@@ -275,6 +306,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
         body: Center(child: CircularProgressIndicator(color: VelocityColors.primary)),
       );
     }
+    final activeMetric = ['TIME (S)', 'VELOCITY (M/S)', 'ACCEL (M/S²)'][_currentMetricPage];
 
     return Scaffold(
       backgroundColor: VelocityColors.black,
@@ -285,60 +317,68 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Metric Switcher (Position, Velocity, Accel)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('COMPARISON ANALYSIS', style: VelocityTextStyles.subHeading.copyWith(letterSpacing: 2)),
-                  if (_seriesList.isNotEmpty)
-                    TextButton(
-                      onPressed: () => setState(() => _seriesList.clear()),
-                      child: Text('CLEAR ALL', style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent, fontSize: 10)),
-                    ),
-                ],
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: VelocityColors.surfaceLight.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(
+                  children: [
+                    _buildMetricTab(0, 'Position'),
+                    _buildMetricTab(1, 'Velocity'),
+                    _buildMetricTab(2, 'Accel'),
+                  ],
+                ),
               ),
             ),
             
             if (_seriesList.isEmpty)
               _buildEmptyState()
             else
-              _buildComparisonContent(),
+              _buildChartCard(activeMetric),
               
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: VelocityButton(
-                label: 'ADD TO COMPARISON',
-                onPressed: _seriesList.length < 4 ? _showAddComparisonDialog : null,
-                icon: Icons.add,
-              ),
+              child: Text('ACTIVE SERIES (${_seriesList.length.toString().padLeft(2, '0')})', style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim, letterSpacing: 2)),
             ),
+            const SizedBox(height: 16),
             
-            if (_seriesList.isNotEmpty) ...[
-              const SizedBox(height: 32),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text('ACTIVE SERIES', style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim, letterSpacing: 1)),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _seriesList.length,
-                  itemBuilder: (context, index) {
-                    final s = _seriesList[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: _buildSeriesTrayItem(s),
-                    );
-                  },
+            // Active Series List (Vertical Cards)
+            ..._seriesList.map((s) => _buildSeriesCard(s)).toList(),
+            
+            const SizedBox(height: 16),
+            
+            // Add Data Series Button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InkWell(
+                onTap: _seriesList.length < 4 ? _showAddComparisonDialog : null,
+                borderRadius: BorderRadius.circular(24),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: VelocityColors.textDim.withOpacity(0.2), style: BorderStyle.none), // Should be dashed, but we'll use a soft border
+                    color: VelocityColors.surfaceLight.withOpacity(0.3),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.add_circle_outline, size: 24, color: VelocityColors.textDim),
+                        const SizedBox(height: 8),
+                        Text('ADD DATA SERIES', style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim, letterSpacing: 1.5)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ],
+            ),
             
             const SizedBox(height: 48),
           ],
@@ -347,64 +387,63 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
     );
   }
 
-  Widget _buildSeriesTrayItem(_ComparisonSeries s) {
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: VelocityColors.surfaceLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: s.color.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: s.color, shape: BoxShape.circle)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  s.label, 
-                  maxLines: 1, 
-                  overflow: TextOverflow.ellipsis,
-                  style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textBody)
-                ),
-              ),
-              GestureDetector(
-                onTap: () => setState(() => _seriesList.removeWhere((item) => item.id == s.id)),
-                child: Icon(Icons.close, size: 14, color: Colors.redAccent.withOpacity(0.7)),
-              ),
-            ],
+  Widget _buildMetricTab(int index, String label) {
+    bool isSelected = _currentMetricPage == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _currentMetricPage = index),
+        borderRadius: BorderRadius.circular(100),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(100),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'MAX: ${s.maxTime.toStringAsFixed(2)}S', 
-            style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)
+          child: Center(
+            child: Text(
+              label, 
+              style: VelocityTextStyles.body.copyWith(
+                fontSize: 13, 
+                color: isSelected ? Colors.black : VelocityColors.textBody,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return VelocityCard(
-      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 24),
-      child: Center(
-        child: Column(
+  Widget _buildSeriesCard(_ComparisonSeries s) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: VelocityColors.surfaceLight,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
           children: [
-            const Icon(Icons.compare_arrows, size: 48, color: VelocityColors.textDim),
-            const SizedBox(height: 16),
-            Text(
-              'NO DATA SELECTED',
-              style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim),
+            Container(
+              width: 4,
+              height: 40,
+              decoration: BoxDecoration(color: s.color, borderRadius: BorderRadius.circular(2)),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Add specific runs or athlete patterns to begin comparison.',
-              textAlign: TextAlign.center,
-              style: VelocityTextStyles.dimBody.copyWith(fontSize: 10),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.label, style: VelocityTextStyles.heading.copyWith(fontSize: 18, letterSpacing: 0.5)),
+                  const SizedBox(height: 4),
+                  Text('100M DASH    ${s.maxTime.toStringAsFixed(2)}s', style: VelocityTextStyles.technical.copyWith(fontSize: 11, color: VelocityColors.textDim)),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: VelocityColors.textDim, size: 20),
+              onPressed: () => setState(() => _seriesList.removeWhere((item) => item.id == s.id)),
             ),
           ],
         ),
@@ -412,44 +451,36 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
     );
   }
 
-  Widget _buildComparisonContent() {
-    return Column(
-      children: [
-        SizedBox(
-          height: 320,
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: (idx) => setState(() => _currentMetricPage = idx),
-            children: [
-              _buildChartCard('POSITION (m)'),
-              _buildChartCard('VELOCITY (m/s)'),
-              _buildChartCard('ACCELERATION (m/s²)'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
+  Widget _buildEmptyState() {
+    return Container(
+      height: 300,
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: VelocityColors.surfaceLight.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Center(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(3, (i) => Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _currentMetricPage == i ? VelocityColors.primary : VelocityColors.textDim.withOpacity(0.3),
-            ),
-          )),
+          children: [
+            const Icon(Icons.show_chart, size: 48, color: VelocityColors.textDim),
+            const SizedBox(height: 16),
+            Text('CHART COMPARISON EMPTY', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim)),
+            const SizedBox(height: 8),
+            Text('Select at least one series to begin.', style: VelocityTextStyles.dimBody.copyWith(fontSize: 10)),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildChartCard(String metricTitle) {
     List<LineChartBarData> bars = [];
-    double maxX = 0;
+    double maxX = _seriesList.isNotEmpty 
+        ? _seriesList.map((s) => s.maxTime).reduce((a, b) => a > b ? a : b) 
+        : 10.0;
 
     for (var s in _seriesList) {
-      if (s.maxTime > maxX) maxX = s.maxTime;
       List<FlSpot> spots;
       if (_currentMetricPage == 0) spots = s.posSpots;
       else if (_currentMetricPage == 1) spots = s.velSpots;
@@ -465,60 +496,116 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
       ));
     }
 
-    return VelocityCard(
-      padding: const EdgeInsets.fromLTRB(8, 24, 24, 16),
+    return Container(
+      height: 350,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(8, 32, 24, 16),
+      decoration: BoxDecoration(
+        color: VelocityColors.surfaceLight,
+        borderRadius: BorderRadius.circular(24),
+      ),
       child: Column(
         children: [
-          Text(metricTitle, style: VelocityTextStyles.technical.copyWith(fontSize: 10, letterSpacing: 2, color: VelocityColors.textDim)),
-          const SizedBox(height: 24),
-          Expanded(
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1),
+          // Legend
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 24),
+            child: Row(
+              children: _seriesList.map((s) => Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Row(
+                  children: [
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: s.color, shape: BoxShape.circle)),
+                    const SizedBox(width: 8),
+                    Text(s.label, style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim)),
+                  ],
                 ),
-                titlesData: FlTitlesData(
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 30,
-                      interval: (maxX > 0) ? (maxX / 5).clamp(0.5, 5.0) : 1.0,
-                      getTitlesWidget: (val, meta) => Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text('${val.toStringAsFixed(1)}s', style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+              )).toList(),
+            ),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                // Y-Axis label (rotated)
+                Positioned(
+                  left: -5,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: RotatedBox(
+                      quarterTurns: 3,
+                      child: Text(metricTitle, style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim.withOpacity(0.5))),
+                    ),
+                  ),
+                ),
+                LineChart(
+                  LineChartData(
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: true,
+                      drawHorizontalLine: true,
+                      getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1),
+                      getDrawingVerticalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1),
+                    ),
+                    titlesData: FlTitlesData(
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 30,
+                          interval: (maxX / 5).clamp(1.0, 50.0),
+                          getTitlesWidget: (val, meta) => Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text('${val.toStringAsFixed(1)}s', style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+                          ),
+                        ),
+                      ),
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 40,
+                          getTitlesWidget: (val, meta) => Text(val.toInt().toString(), style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+                        ),
+                      ),
+                    ),
+                    borderData: FlBorderData(show: false),
+                    lineBarsData: bars,
+                    lineTouchData: LineTouchData(
+                      handleBuiltInTouches: true,
+                      getTouchedSpotIndicator: (LineChartBarData barData, List<int> spotIndexes) {
+                        return spotIndexes.map((index) {
+                          return TouchedSpotIndicatorData(
+                            FlLine(color: Colors.white.withOpacity(0.2), strokeWidth: 1, dashArray: [5, 5]),
+                            FlDotData(
+                              show: true,
+                              getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                                radius: 4,
+                                color: Colors.white,
+                                strokeWidth: 2,
+                                strokeColor: barData.color ?? Colors.white,
+                              ),
+                            ),
+                          );
+                        }).toList();
+                      },
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipColor: (_) => VelocityColors.surfaceLight,
+                        fitInsideHorizontally: true,
+                        fitInsideVertically: true,
+                        getTooltipItems: (touchedSpots) {
+                          return touchedSpots.map((s) {
+                            final series = _seriesList[s.barIndex];
+                            return LineTooltipItem(
+                              '${series.label}\n${s.x.toStringAsFixed(2)}s: ${s.y.toStringAsFixed(2)}',
+                              VelocityTextStyles.technical.copyWith(color: series.color, fontSize: 10),
+                            );
+                          }).toList();
+                        },
                       ),
                     ),
                   ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (val, meta) => Text(val.toInt().toString(), style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
-                    ),
-                  ),
                 ),
-                borderData: FlBorderData(show: false),
-                lineBarsData: bars,
-                lineTouchData: LineTouchData(
-                  handleBuiltInTouches: true,
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (_) => VelocityColors.surfaceLight,
-                    getTooltipItems: (touchedSpots) {
-                      return touchedSpots.map((s) {
-                        final series = _seriesList[s.barIndex];
-                        return LineTooltipItem(
-                          '${series.label}: ${s.y.toStringAsFixed(2)}',
-                          VelocityTextStyles.technical.copyWith(color: series.color, fontSize: 10),
-                        );
-                      }).toList();
-                    },
-                  ),
-                ),
-              ),
+              ],
             ),
           ),
         ],
