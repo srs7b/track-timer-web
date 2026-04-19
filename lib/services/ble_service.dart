@@ -22,6 +22,9 @@ class BleService {
   final _timingDataController = StreamController<List<int>>.broadcast();
   Stream<List<int>> get timingDataStream => _timingDataController.stream;
 
+  final _statusController = StreamController<String>.broadcast();
+  Stream<String> get statusMessage => _statusController.stream;
+
   BleService() {
     FlutterBluePlus.isScanning.listen((scanning) {
       _isScanningController.add(scanning);
@@ -30,10 +33,8 @@ class BleService {
 
   Future<void> startScan() async {
     if (await FlutterBluePlus.isSupported == false) return;
-    await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 10),
-      withServices: [Guid(serviceUuid)],
-    );
+    _statusController.add("BLE: SCANNING...");
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
   }
 
   Future<void> stopScan() async {
@@ -44,9 +45,11 @@ class BleService {
 
   Future<void> connectToDevice(BluetoothDevice device) async {
     try {
+      _statusController.add("BLE: CONNECTING...");
       await device.connect();
       connectedDevice = device;
       _connectionStateController.add(BluetoothConnectionState.connected);
+      _statusController.add("BLE: CONNECTED");
 
       // Listen for disconnection
       device.connectionState.listen((state) {
@@ -55,23 +58,34 @@ class BleService {
           connectedDevice = null;
           _targetCharacteristic = null;
           _lastValueSubscription?.cancel();
+          _statusController.add("BLE: DISCONNECTED");
         }
       });
 
       // Discover services
+      _statusController.add("BLE: DISCOVERING SERVICES...");
       List<BluetoothService> services = await device.discoverServices();
+      bool found = false;
       for (var service in services) {
         if (service.uuid.toString().toUpperCase() == serviceUuid) {
           for (var characteristic in service.characteristics) {
             if (characteristic.uuid.toString().toUpperCase() == characteristicUuid) {
               _targetCharacteristic = characteristic;
               await _setupNotifications(characteristic);
+              found = true;
               break;
             }
           }
         }
       }
+
+      if (found) {
+        _statusController.add("BLE: HANDSHAKE SUCCESS (READY)");
+      } else {
+        _statusController.add("BLE: ERROR - TARGET SERVICE NOT FOUND");
+      }
     } catch (e) {
+      _statusController.add("BLE: CONNECTION ERROR");
       debugPrint("Connection error: $e");
       rethrow;
     }
@@ -138,6 +152,7 @@ class BleService {
     _connectionStateController.close();
     _isScanningController.close();
     _timingDataController.close();
+    _statusController.close();
     _lastValueSubscription?.cancel();
   }
 }

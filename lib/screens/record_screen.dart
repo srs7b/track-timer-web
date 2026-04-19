@@ -5,7 +5,6 @@ import '../services/database_service.dart';
 import '../models/user_model.dart';
 import '../models/run_model.dart';
 import '../services/ble_service.dart';
-import '../services/mock_data_service.dart';
 import '../theme/style_constants.dart';
 import '../widgets/velocity_card.dart';
 import '../widgets/velocity_button.dart';
@@ -27,6 +26,7 @@ class _RecordScreenState extends State<RecordScreen> {
   String _selectedSurface = 'Synthetic Track (Outdoor)';
 
   BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
+  String _statusMsg = "READY";
 
   StreamSubscription? _connectionSub;
 
@@ -53,6 +53,10 @@ class _RecordScreenState extends State<RecordScreen> {
 
     _bleService.timingDataStream.listen((offsets) {
       if (mounted) _handleFinalTiming(offsets);
+    });
+
+    _bleService.statusMessage.listen((msg) {
+      if (mounted) setState(() => _statusMsg = msg);
     });
   }
 
@@ -441,24 +445,44 @@ class _RecordScreenState extends State<RecordScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: VelocityButton(
-                      label: 'MOCK DEMO RUN',
-                      primary: false,
-                      icon: Icons.biotech,
-                      onPressed: () {
-                        final mock = MockDataService.generateMockRunData(
-                          durationMs: 10000 + (new DateTime.now().millisecond % 2000), // ~10-12s
-                          numGates: 3,
-                        );
-                        _bleService.simulateIncomingData(mock['rawBleString']);
-                      },
-                    ),
-                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 32),
+
+            // Diagnostic Panel
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: VelocityColors.textDim.withOpacity(0.1)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _statusMsg.contains("ERROR") ? Colors.red : (_statusMsg.contains("SUCCESS") ? Colors.green : Colors.blue),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "DIAGNOSTIC LOG: $_statusMsg",
+                        style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             const SizedBox(height: 60),
           ],
         ),
