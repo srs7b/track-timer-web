@@ -170,43 +170,136 @@ class _RecordScreenState extends State<RecordScreen> {
     _showResultDialog(newRun);
   }
 
-  Future<void> _showResultDialog(Run run) async {
+  Future<void> _showResultDialog(Run initialRun) async {
+    List<int> currentOffsets = List.from(initialRun.gateTimeOffsets);
+
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: VelocityColors.surfaceLight,
-        title: Text('SESSION CAPTURED', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('ATHLETE: ${run.name.split(' ').first}', style: VelocityTextStyles.body),
-            const SizedBox(height: 8),
-            Text('TOTAL TIME: ${run.totalTimeSeconds.toStringAsFixed(2)}S', style: VelocityTextStyles.heading.copyWith(fontSize: 24, color: VelocityColors.primary)),
-            const SizedBox(height: 16),
-            Text('SURFACE: ${_selectedSurface}', style: VelocityTextStyles.dimBody.copyWith(fontSize: 10)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('DISCARD', style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: VelocityColors.primary),
-            onPressed: () async {
-              await _db.saveRun(run);
-              if (mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('SESSION SAVED TO LOG')),
-                );
-              }
-            },
-            child: Text('KEEP RECORD', style: VelocityTextStyles.technical.copyWith(color: Colors.black)),
-          ),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Recalculate summary metrics based on trimmed list
+          double totalTime = 0.0;
+          if (currentOffsets.length >= 2) {
+            totalTime = (currentOffsets.last - currentOffsets.first) / 1000.0;
+          }
+
+          return AlertDialog(
+            backgroundColor: VelocityColors.surfaceLight,
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('SESSION CAPTURED', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary, fontSize: 13)),
+                Text('${currentOffsets.length} GATES', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim, fontSize: 10)),
+              ],
+            ),
+            content: Container(
+              width: double.maxFinite,
+              constraints: const BoxConstraints(maxHeight: 400),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('ATHLETE: ${initialRun.name.split(' ').first}', style: VelocityTextStyles.body.copyWith(fontWeight: FontWeight.bold)),
+                          Text('SURFACE: $_selectedSurface', style: VelocityTextStyles.dimBody.copyWith(fontSize: 9)),
+                        ],
+                      ),
+                      Text(
+                        '${totalTime.toStringAsFixed(2)}s', 
+                        style: VelocityTextStyles.heading.copyWith(fontSize: 32, color: VelocityColors.primary)
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Text('TRIM GATES (TAP TO REMOVE)', style: VelocityTextStyles.dimBody.copyWith(fontSize: 9, letterSpacing: 1)),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.1)),
+                      ),
+                      child: currentOffsets.isEmpty 
+                        ? Center(child: Padding(
+                            padding: const EdgeInsets.all(20.0),
+                            child: Text('NO GATES RECORDED', style: VelocityTextStyles.dimBody),
+                          ))
+                        : ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: currentOffsets.length,
+                          separatorBuilder: (context, index) => Divider(height: 1, color: VelocityColors.textDim.withValues(alpha: 0.05)),
+                          itemBuilder: (context, index) {
+                            int offset = currentOffsets[index];
+                            double relativeTime = (index == 0) ? 0.0 : (offset - currentOffsets[0]) / 1000.0;
+                            
+                            return ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              title: Text('GATE ${index + 1}', style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textBody)),
+                              subtitle: Text('${relativeTime.toStringAsFixed(3)}s', style: VelocityTextStyles.body.copyWith(fontSize: 14)),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    currentOffsets.removeAt(index);
+                                  });
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                    ),
+                  ),
+                  if (currentOffsets.length < 2)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: Text('⚠️ NEED AT LEAST 2 GATES TO CALCULATE TIME', style: VelocityTextStyles.technical.copyWith(color: Colors.orangeAccent, fontSize: 9)),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('DISCARD', style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: VelocityColors.primary,
+                  disabledBackgroundColor: VelocityColors.textDim.withValues(alpha: 0.2),
+                ),
+                onPressed: currentOffsets.length >= 2 ? () async {
+                  final trimmedRun = Run(
+                    id: initialRun.id,
+                    userId: initialRun.userId,
+                    name: initialRun.name,
+                    timestamp: initialRun.timestamp,
+                    nodeDistances: initialRun.nodeDistances,
+                    gateTimeOffsets: currentOffsets,
+                    distanceClass: initialRun.distanceClass,
+                    notes: initialRun.notes,
+                  );
+                  
+                  await _db.saveRun(trimmedRun);
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('SESSION SAVED TO LOG')),
+                    );
+                  }
+                } : null,
+                child: Text('KEEP RECORD', style: VelocityTextStyles.technical.copyWith(color: Colors.black)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
