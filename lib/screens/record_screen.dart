@@ -115,9 +115,8 @@ class _RecordScreenState extends State<RecordScreen> {
       
       setState(() => _countdownValue = i);
       try {
-        // On Web, sometimes AssetSource needs an explicit 'assets/' prefix 
-        // depending on how the base-href is handled by the player.
-        await _audioPlayer.play(AssetSource('assets/audio/beep.mp3'));
+        // AssetSource in audioplayers 6.x expects path relative to assets folder
+        await _audioPlayer.play(AssetSource('audio/beep.mp3'));
       } catch (e) {
         debugPrint("Audio Error: $e");
         if (mounted) setState(() => _statusMsg = "AUDIO ERROR: $e");
@@ -131,7 +130,7 @@ class _RecordScreenState extends State<RecordScreen> {
     setState(() => _countdownValue = 0);
 
     // 2. Fire audio shot immediately (non-blocking)
-    _audioPlayer.play(AssetSource('assets/audio/shot.mp3')).catchError((e) {
+    _audioPlayer.play(AssetSource('audio/race_start.wav')).catchError((e) {
       debugPrint("Shot Audio Error: $e");
       return null;
     });
@@ -721,10 +720,14 @@ class _RecordScreenState extends State<RecordScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                "DIAGNOSTIC LOG: $_statusMsg",
-                                style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim),
+                              Expanded(
+                                child: Text(
+                                  "DIAGNOSTIC LOG: $_statusMsg",
+                                  style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim),
+                                  softWrap: true,
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               if (_deviceStatus != BleDeviceStatus.disconnected)
                                 InkWell(
                                   onTap: () => _bleService.readData(),

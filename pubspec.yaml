@@ -76,6 +76,7 @@ flutter:
   assets:
     - assets/audio/shot.mp3
     - assets/audio/beep.mp3
+    - assets/audio/race_start.wav
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
