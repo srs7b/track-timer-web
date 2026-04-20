@@ -13,11 +13,17 @@ flutter build web --base-href "/track-timer-web/" --release
 
 echo "📦 Committing source code to main branch..."
 git add .
-git commit -m "Update app source and web build" || echo "No changes to commit"
+git commit -m "Update app source and assets" || echo "No changes to commit"
 git push -u origin main
 
-echo "🌐 Deploying to GitHub Pages (gh-pages branch)..."
-# Push the compiled web folder to the gh-pages branch
-git subtree push --prefix build/web origin gh-pages
+echo "🌐 Deploying to GitHub Pages..."
+cd build/web
 
-echo "✅ Deployment complete! Allow 1-2 minutes for GitHub Actions to refresh the live site."
+# Initialize a temp repo to force-push ignored build files
+git init
+git add .
+git commit -m "Production Build: $(date)"
+git remote add origin https://github.com/srs7b/track-timer-web.git
+git push -f origin HEAD:gh-pages
+
+echo "✅ Deployment complete! Audio assets should now be live."

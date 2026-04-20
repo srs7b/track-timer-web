@@ -111239,25 +111239,25 @@ asf(a){var s=0,r=A.v(t.H),q=1,p=[],o=this,n,m,l,k,j
 var $async$tw=A.q(function(b,c){if(b===1){p.push(c)
 s=q}for(;;)switch(s){case 0:q=3
 s=6
-return A.l(o.f.pg(0,new A.wP(a,null)),$async$tw)
+return A.l(o.f.pg(0,new A.wP("assets/"+a,null)),$async$tw)
 case 6:q=1
 s=5
 break
 case 3:q=2
 k=p.pop()
 n=A.ab(k)
-A.fb().$1("Primary Audio Load Failed, trying strategy 2: "+A.n(n))
+A.fb().$1("Audio Playback Error ("+a+"): "+A.n(n))
 q=8
 s=11
-return A.l(o.f.pg(0,new A.wP("assets/"+a,null)),$async$tw)
+return A.l(o.f.pg(0,new A.wP(a,null)),$async$tw)
 case 11:q=2
 s=10
 break
 case 8:q=7
 j=p.pop()
 m=A.ab(j)
-A.fb().$1("Secondary Audio Load Failed: "+A.n(m))
-throw A.e(m)
+A.fb().$1("Secondary Fallback Failed: "+A.n(m))
+throw j
 s=10
 break
 case 7:s=2

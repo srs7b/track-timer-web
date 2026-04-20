@@ -156,19 +156,21 @@ class _RecordScreenState extends State<RecordScreen> {
   /// Robust audio player that handles Web path discrepancies
   Future<void> _playAssetSafe(String path) async {
     try {
-      // Strategy 1: Standard AssetSource (relative to assets/)
-      await _audioPlayer.play(AssetSource(path));
-    } catch (e) {
       if (kIsWeb) {
-        debugPrint("Primary Audio Load Failed, trying strategy 2: $e");
-        try {
-          // Strategy 2: Explicit assets/ prefix (double assets in build)
-          await _audioPlayer.play(AssetSource('assets/$path'));
-        } catch (e2) {
-          debugPrint("Secondary Audio Load Failed: $e2");
-          throw e2;
-        }
+        // Strategy: Flutter Web build usually nests assets inside another 'assets/' folder.
+        // audioplayers prefixes paths with 'assets/', so we need to provide the inner 'assets/path'.
+        await _audioPlayer.play(AssetSource('assets/$path'));
       } else {
+        // Native platforms use the standard single 'assets/' prefix logic.
+        await _audioPlayer.play(AssetSource(path));
+      }
+    } catch (e) {
+      debugPrint("Audio Playback Error ($path): $e");
+      // Fallback for local development or different build structures
+      try {
+        await _audioPlayer.play(AssetSource(path));
+      } catch (e2) {
+        debugPrint("Secondary Fallback Failed: $e2");
         rethrow;
       }
     }
