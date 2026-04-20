@@ -36,7 +36,7 @@ class _MainScreenState extends State<MainScreen> {
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(
-              color: VelocityColors.textDim.withOpacity(0.1),
+              color: VelocityColors.textDim.withValues(alpha: 0.1),
               width: 1,
             ),
           ),

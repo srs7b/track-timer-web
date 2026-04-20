@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/database_service.dart';
 import '../models/user_model.dart';
 import '../models/run_model.dart';
@@ -20,6 +21,8 @@ class RecordScreen extends StatefulWidget {
 class _RecordScreenState extends State<RecordScreen> {
   final DatabaseService _db = DatabaseService();
   final BleService _bleService = BleService();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   List<User> _users = [];
   User? _selectedUser;
   int _selectedDistance = 100;
@@ -31,6 +34,9 @@ class _RecordScreenState extends State<RecordScreen> {
   DateTime? _lastHeartbeat;
   bool _heartbeatPulse = false;
   int _hitCount = 0;
+
+  bool _isCountingDown = false;
+  int _countdownValue = 3;
 
   StreamSubscription? _connectionSub;
 
@@ -47,12 +53,18 @@ class _RecordScreenState extends State<RecordScreen> {
   void dispose() {
     _connectionSub?.cancel();
     _bleService.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
   void _setupBleListeners() {
     _connectionSub = _bleService.connectionState.listen((state) {
-      if (mounted) setState(() => _connectionState = state);
+      if (mounted) {
+        setState(() => _connectionState = state);
+        if (state == BluetoothConnectionState.disconnected && _isCountingDown) {
+          setState(() => _isCountingDown = false);
+        }
+      }
     });
 
     _bleService.timingDataStream.listen((offsets) {
@@ -64,7 +76,12 @@ class _RecordScreenState extends State<RecordScreen> {
     });
 
     _bleService.deviceStatus.listen((status) {
-      if (mounted) setState(() => _deviceStatus = status);
+      if (mounted) {
+        setState(() => _deviceStatus = status);
+        if (status == BleDeviceStatus.disconnected && _isCountingDown) {
+          setState(() => _isCountingDown = false);
+        }
+      }
     });
 
     _bleService.heartbeatStream.listen((time) {
@@ -83,6 +100,43 @@ class _RecordScreenState extends State<RecordScreen> {
     _bleService.hitCount.listen((count) {
       if (mounted) setState(() => _hitCount = count);
     });
+  }
+
+  Future<void> _startCountdownSequence() async {
+    if (_isCountingDown) return;
+    
+    setState(() {
+      _isCountingDown = true;
+      _countdownValue = 3;
+    });
+
+    for (int i = 3; i >= 1; i--) {
+      if (!_isCountingDown) return; // Sequence cancelled (e.g. disconnect)
+      
+      setState(() => _countdownValue = i);
+      await _audioPlayer.play(AssetSource('audio/beep.mp3'));
+      await Future.delayed(const Duration(seconds: 1));
+    }
+
+    if (!_isCountingDown) return;
+
+    setState(() => _countdownValue = 0);
+    await _audioPlayer.play(AssetSource('audio/shot.mp3'));
+    
+    // Trigger BLE Start immediately with the gunshot
+    await _bleService.sendStartCommand();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('START COMMAND SENT TO ARDUINO')),
+      );
+    }
+
+    // Brief delay to show "GO!" or just hide
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      setState(() => _isCountingDown = false);
+    }
   }
 
   void _handleFinalTiming(List<int> offsets) {
@@ -368,18 +422,20 @@ class _RecordScreenState extends State<RecordScreen> {
       appBar: AppBar(
         title: Text('TRACK.TIME', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textBody, letterSpacing: 4)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          children: [
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              children: [
             // Status Section
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                   Expanded(
+                  Expanded(
                     child: VelocityCard(
-                      borderColor: isConnected ? VelocityColors.primary.withOpacity(0.3) : null,
+                      borderColor: isConnected ? VelocityColors.primary.withValues(alpha: 0.3) : null,
                       glow: isConnected,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -402,7 +458,7 @@ class _RecordScreenState extends State<RecordScreen> {
                     child: InkWell(
                       onTap: isConnected ? () => _bleService.disconnect() : null,
                       child: VelocityCard(
-                        borderColor: isConnected ? Colors.redAccent.withOpacity(0.3) : null,
+                        borderColor: isConnected ? Colors.redAccent.withValues(alpha: 0.3) : null,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -432,7 +488,7 @@ class _RecordScreenState extends State<RecordScreen> {
                 decoration: BoxDecoration(
                   color: VelocityColors.surfaceLight,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: VelocityColors.textDim.withOpacity(0.05)),
+                  border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.05)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,16 +547,13 @@ class _RecordScreenState extends State<RecordScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: VelocityButton(
-                label: _deviceStatus == BleDeviceStatus.ready ? 'START SESSION' : 'HARDWARE NOT READY',
-                onPressed: _deviceStatus == BleDeviceStatus.ready ? () async {
-                  await _bleService.sendStartCommand();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('START COMMAND SENT TO ARDUINO')),
-                    );
-                  }
-                } : null,
-                icon: Icons.play_arrow,
+                label: _isCountingDown 
+                  ? 'GET READY...' 
+                  : (_deviceStatus == BleDeviceStatus.ready ? 'START SESSION' : 'HARDWARE NOT READY'),
+                onPressed: (_deviceStatus == BleDeviceStatus.ready && !_isCountingDown) 
+                  ? _startCountdownSequence 
+                  : null,
+                icon: _isCountingDown ? Icons.timer : Icons.play_arrow,
               ),
             ),
             
@@ -533,9 +586,9 @@ class _RecordScreenState extends State<RecordScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.03),
+                  color: Colors.white.withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: VelocityColors.textDim.withOpacity(0.1)),
+                  border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.1)),
                 ),
                 child: Row(
                   children: [
@@ -548,7 +601,7 @@ class _RecordScreenState extends State<RecordScreen> {
                           : (_deviceStatus == BleDeviceStatus.ready ? (_heartbeatPulse ? VelocityColors.primary : Colors.green) : Colors.blue),
                         shape: BoxShape.circle,
                         boxShadow: _heartbeatPulse ? [
-                          BoxShadow(color: VelocityColors.primary.withOpacity(0.5), blurRadius: 8, spreadRadius: 2)
+                          BoxShadow(color: VelocityColors.primary.withValues(alpha: 0.5), blurRadius: 8, spreadRadius: 2)
                         ] : null,
                       ),
                     ),
@@ -576,12 +629,24 @@ class _RecordScreenState extends State<RecordScreen> {
                                     ),
                                   ),
                                 ),
+                              const SizedBox(width: 12),
+                              InkWell(
+                                onTap: _startCountdownSequence,
+                                child: Text(
+                                  "[DEBUG: TEST AUDIO]",
+                                  style: VelocityTextStyles.technical.copyWith(
+                                    fontSize: 9, 
+                                    color: Colors.orangeAccent,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                           if (_lastHeartbeat != null)
                             Text(
                               "LAST LIVE PING: ${_lastHeartbeat!.hour}:${_lastHeartbeat!.minute.toString().padLeft(2, '0')}:${_lastHeartbeat!.second.toString().padLeft(2, '0')}",
-                              style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.primary.withOpacity(0.5)),
+                              style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.primary.withValues(alpha: 0.5)),
                             ),
                         ],
                       ),
@@ -595,7 +660,38 @@ class _RecordScreenState extends State<RecordScreen> {
           ],
         ),
       ),
-    );
+      if (_isCountingDown)
+        Container(
+          color: Colors.black.withValues(alpha: 0.8),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+                  child: Text(
+                    _countdownValue == 0 ? 'GO!' : '$_countdownValue',
+                    key: ValueKey(_countdownValue),
+                    style: VelocityTextStyles.heading.copyWith(
+                      fontSize: 120,
+                      color: _countdownValue == 0 ? VelocityColors.primary : Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'GET STEADY',
+                  style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim, letterSpacing: 4),
+                ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  ),
+);
   }
 
   Widget _buildConfigLabel(String label) {
@@ -614,7 +710,7 @@ class _RecordScreenState extends State<RecordScreen> {
         decoration: BoxDecoration(
           color: VelocityColors.black,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: VelocityColors.textDim.withOpacity(0.2)),
+          border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.2)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -633,7 +729,7 @@ class _RecordScreenState extends State<RecordScreen> {
       decoration: BoxDecoration(
         color: VelocityColors.black,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: VelocityColors.textDim.withOpacity(0.2)),
+        border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.2)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(

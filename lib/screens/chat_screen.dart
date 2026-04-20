@@ -193,12 +193,12 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(colors: [
-                    VelocityColors.primary.withOpacity(0.4),
+                    Colors.white.withValues(alpha: 0.05),
                     Colors.transparent
                   ]),
                   boxShadow: [
                     BoxShadow(
-                      color: VelocityColors.primary.withOpacity(_isTyping ? 0.8 : 0.3),
+                      color: VelocityColors.primary.withValues(alpha: _isTyping ? 0.8 : 0.3),
                       blurRadius: _glowAnimation.value,
                       spreadRadius: _isTyping ? 10 : 2,
                     )
