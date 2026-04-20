@@ -111,17 +111,29 @@ class _RecordScreenState extends State<RecordScreen> {
     });
 
     for (int i = 3; i >= 1; i--) {
-      if (!_isCountingDown) return; // Sequence cancelled (e.g. disconnect)
+      if (!_isCountingDown) return; 
       
       setState(() => _countdownValue = i);
-      await _audioPlayer.play(AssetSource('audio/beep.mp3'));
+      try {
+        // On Web, sometimes AssetSource needs an explicit 'assets/' prefix 
+        // depending on how the base-href is handled by the player.
+        await _audioPlayer.play(AssetSource('assets/audio/beep.mp3'));
+      } catch (e) {
+        debugPrint("Audio Error: $e");
+        if (mounted) setState(() => _statusMsg = "AUDIO ERROR: $e");
+      }
       await Future.delayed(const Duration(seconds: 1));
     }
 
     if (!_isCountingDown) return;
 
     setState(() => _countdownValue = 0);
-    await _audioPlayer.play(AssetSource('audio/shot.mp3'));
+    try {
+      await _audioPlayer.play(AssetSource('assets/audio/shot.mp3'));
+    } catch (e) {
+      debugPrint("Audio Error: $e");
+      if (mounted) setState(() => _statusMsg = "AUDIO ERROR: $e");
+    }
     
     // Trigger BLE Start immediately with the gunshot
     await _bleService.sendStartCommand();
@@ -132,7 +144,6 @@ class _RecordScreenState extends State<RecordScreen> {
       );
     }
 
-    // Brief delay to show "GO!" or just hide
     await Future.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       setState(() => _isCountingDown = false);
