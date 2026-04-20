@@ -3,9 +3,13 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+echo "🧹 Cleaning and resolving dependencies..."
+flutter clean
+flutter pub get
+
 echo "🚀 Compiling Flutter Web Build..."
 # Compile for GitHub Pages, setting the base href to the repository name
-flutter build web --base-href "/track-timer-web/"
+flutter build web --base-href "/track-timer-web/" --release
 
 echo "📦 Committing source code to main branch..."
 git add .
