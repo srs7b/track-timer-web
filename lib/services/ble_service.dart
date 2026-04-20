@@ -340,10 +340,12 @@ class BleService {
   }
 
   Future<void> sendStartCommand() async {
+    _statusController.add("BLE: INITIATING START TRIGGER...");
     _sessionBuffer.clear();
     _hitCountController.add(0);
     _seenHits.clear();
     await _writeString("START");
+    _statusController.add("BLE: START ACKNOWLEDGED");
   }
 
   Future<void> sendStopCommand() async {

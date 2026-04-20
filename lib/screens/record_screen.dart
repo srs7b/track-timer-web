@@ -126,25 +126,29 @@ class _RecordScreenState extends State<RecordScreen> {
     }
 
     if (!_isCountingDown) return;
-
-    setState(() => _countdownValue = 0);
-    try {
-      await _audioPlayer.play(AssetSource('assets/audio/shot.mp3'));
-    } catch (e) {
-      debugPrint("Audio Error: $e");
-      if (mounted) setState(() => _statusMsg = "AUDIO ERROR: $e");
-    }
     
-    // Trigger BLE Start immediately with the gunshot
-    await _bleService.sendStartCommand();
+    // 1. Show "GO!" instantly
+    setState(() => _countdownValue = 0);
+
+    // 2. Fire audio shot immediately (non-blocking)
+    _audioPlayer.play(AssetSource('assets/audio/shot.mp3')).catchError((e) {
+      debugPrint("Shot Audio Error: $e");
+      return null;
+    });
+    
+    // 3. Trigger BLE Start command immediately (non-blocking)
+    _bleService.sendStartCommand().catchError((e) {
+      debugPrint("BLE Start command failed: $e");
+    });
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('START COMMAND SENT TO ARDUINO')),
+        const SnackBar(content: Text('START TRIGGERED'), duration: Duration(milliseconds: 800)),
       );
     }
 
-    await Future.delayed(const Duration(milliseconds: 500));
+    // 4. Keep "GO!" overlay visible for a fixed duration, then close
+    await Future.delayed(const Duration(milliseconds: 800));
     if (mounted) {
       setState(() => _isCountingDown = false);
     }
