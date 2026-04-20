@@ -38,7 +38,7 @@ class VelocityCard extends StatelessWidget {
           color: VelocityColors.surfaceLight,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: borderColor ?? VelocityColors.textDim.withOpacity(0.1),
+            color: borderColor ?? VelocityColors.textDim.withValues(alpha: 0.1),
             width: 1,
           ),
           boxShadow: glow ? VelocityGlow.green(15) : null,

@@ -148,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('RECORDS INDEX', style: VelocityTextStyles.technical.copyWith(fontSize: 12, letterSpacing: 1.5, color: VelocityColors.textDim)),
-                      Text('IDX-${filteredRuns.length.toString().padLeft(3, '0')}', style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim.withOpacity(0.5))),
+                      Text('IDX-${filteredRuns.length.toString().padLeft(3, '0')}', style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim.withValues(alpha: 0.5))),
                     ],
                   ),
                 ),
@@ -181,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: isSelected ? VelocityColors.textBody : VelocityColors.black,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: VelocityColors.textDim.withOpacity(0.3)),
+          border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [

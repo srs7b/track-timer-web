@@ -103,7 +103,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
                     controller: controllers[i],
                     style: VelocityTextStyles.body,
                     decoration: InputDecoration(
-                      labelText: 'GATE ${i} to ${i + 1} (m)',
+                      labelText: 'GATE $i to ${i + 1} (m)',
                       labelStyle: VelocityTextStyles.dimBody,
                       enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: VelocityColors.textDim)),
                       focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: VelocityColors.primary)),
@@ -199,9 +199,9 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withOpacity(0.1),
+                    color: Colors.redAccent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
@@ -403,7 +403,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
             dotData: const FlDotData(show: true),
             belowBarData: BarAreaData(
               show: true,
-              color: lineColor.withOpacity(0.2),
+              color: lineColor.withValues(alpha: 0.2),
             ),
           ),
         ],

@@ -382,7 +382,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
-          color: active ? VelocityColors.primary.withOpacity(0.03) : Colors.transparent,
+          color: active ? VelocityColors.primary.withValues(alpha: 0.03) : Colors.transparent,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
@@ -393,7 +393,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             fontSize: isGlobalBest ? 13 : 12,
             color: value == null 
                 ? VelocityColors.textDim 
-                : (isGlobalBest ? VelocityColors.primary : (active ? VelocityColors.textBody : VelocityColors.textDim.withOpacity(0.8))),
+                : (isGlobalBest ? VelocityColors.primary : (active ? VelocityColors.textBody : VelocityColors.textDim.withValues(alpha: 0.8))),
           ),
         ),
       ),

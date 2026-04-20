@@ -30,7 +30,7 @@ class VelocityButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(100),
             side: !primary
-                ? BorderSide(color: VelocityColors.textDim.withOpacity(0.3))
+                ? BorderSide(color: VelocityColors.textDim.withValues(alpha: 0.3))
                 : BorderSide.none,
           ),
           elevation: 0,

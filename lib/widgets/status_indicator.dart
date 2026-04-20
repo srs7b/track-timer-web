@@ -66,7 +66,7 @@ class _StatusIndicatorState extends State<StatusIndicator>
                     boxShadow: widget.active
                         ? [
                             BoxShadow(
-                              color: VelocityColors.primary.withOpacity(0.5),
+                              color: VelocityColors.primary.withValues(alpha: 0.5),
                               blurRadius: _glowAnimation.value,
                               spreadRadius: _glowAnimation.value / 2,
                             )

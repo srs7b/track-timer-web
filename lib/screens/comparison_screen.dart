@@ -294,7 +294,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: VelocityColors.surfaceLight.withOpacity(0.5),
+                  color: VelocityColors.surfaceLight.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(100),
                 ),
                 child: Row(
@@ -321,7 +321,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
             const SizedBox(height: 16),
             
             // Active Series List (Vertical Cards)
-            ..._seriesList.map((s) => _buildSeriesCard(s)).toList(),
+            ..._seriesList.map((s) => _buildSeriesCard(s)),
             
             const SizedBox(height: 16),
             
@@ -335,8 +335,8 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 32),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: VelocityColors.textDim.withOpacity(0.2), style: BorderStyle.none), // Should be dashed, but we'll use a soft border
-                    color: VelocityColors.surfaceLight.withOpacity(0.3),
+                    border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.2), style: BorderStyle.none), // Should be dashed, but we'll use a soft border
+                    color: VelocityColors.surfaceLight.withValues(alpha: 0.3),
                   ),
                   child: Center(
                     child: Column(
@@ -427,7 +427,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
       height: 300,
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: VelocityColors.surfaceLight.withOpacity(0.3),
+        color: VelocityColors.surfaceLight.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Center(
@@ -453,9 +453,13 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
 
     for (var s in _seriesList) {
       List<FlSpot> spots;
-      if (_currentMetricPage == 0) spots = s.posSpots;
-      else if (_currentMetricPage == 1) spots = s.velSpots;
-      else spots = s.accelSpots;
+      if (_currentMetricPage == 0) {
+        spots = s.posSpots;
+      } else if (_currentMetricPage == 1) {
+        spots = s.velSpots;
+      } else {
+        spots = s.accelSpots;
+      }
 
       bars.add(LineChartBarData(
         spots: spots,
@@ -464,7 +468,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
         curveSmoothness: 0.35,
         barWidth: 3,
         dotData: const FlDotData(show: false),
-        belowBarData: BarAreaData(show: true, color: s.color.withOpacity(0.05)),
+        belowBarData: BarAreaData(show: true, color: s.color.withValues(alpha: 0.05)),
       ));
     }
 
@@ -505,7 +509,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
                   child: Center(
                     child: RotatedBox(
                       quarterTurns: 3,
-                      child: Text(metricTitle, style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim.withOpacity(0.5))),
+                      child: Text(metricTitle, style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.textDim.withValues(alpha: 0.5))),
                     ),
                   ),
                 ),
@@ -515,8 +519,8 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
                       show: true,
                       drawVerticalLine: true,
                       drawHorizontalLine: true,
-                      getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1),
-                      getDrawingVerticalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1),
+                      getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withValues(alpha: 0.05), strokeWidth: 1),
+                      getDrawingVerticalLine: (val) => FlLine(color: VelocityColors.textDim.withValues(alpha: 0.05), strokeWidth: 1),
                     ),
                     titlesData: FlTitlesData(
                       rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -547,7 +551,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
                       getTouchedSpotIndicator: (LineChartBarData barData, List<int> spotIndexes) {
                         return spotIndexes.map((index) {
                           return TouchedSpotIndicatorData(
-                            FlLine(color: Colors.white.withOpacity(0.2), strokeWidth: 1, dashArray: [5, 5]),
+                            FlLine(color: Colors.white.withValues(alpha: 0.2), strokeWidth: 1, dashArray: [5, 5]),
                             FlDotData(
                               show: true,
                               getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(

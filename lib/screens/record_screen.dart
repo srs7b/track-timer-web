@@ -164,7 +164,7 @@ class _RecordScreenState extends State<RecordScreen> {
       nodeDistances: _nodeDistances,
       gateTimeOffsets: offsets,
       distanceClass: _selectedDistance,
-      notes: 'Recorded via BLE Demo (${_selectedSurface})',
+      notes: 'Recorded via BLE Demo ($_selectedSurface)',
     );
 
     _showResultDialog(newRun);
@@ -288,7 +288,7 @@ class _RecordScreenState extends State<RecordScreen> {
                   );
                   
                   await _db.saveRun(trimmedRun);
-                  if (mounted) {
+                  if (context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('SESSION SAVED TO LOG')),

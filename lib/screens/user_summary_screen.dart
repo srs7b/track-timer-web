@@ -125,9 +125,9 @@ class _UserSummaryScreenState extends State<UserSummaryScreen> {
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: VelocityColors.primary.withOpacity(0.1),
+                      color: VelocityColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
-                      border: Border.all(color: VelocityColors.primary.withOpacity(0.5)),
+                      border: Border.all(color: VelocityColors.primary.withValues(alpha: 0.5)),
                     ),
                     child: Center(
                       child: Text(
@@ -247,7 +247,7 @@ class _UserSummaryScreenState extends State<UserSummaryScreen> {
             else
               VelocityCard(
                 padding: const EdgeInsets.fromLTRB(8, 24, 16, 12),
-                child: Container(
+                child: SizedBox(
                   height: 260,
                   child: BarChart(
                     BarChartData(
@@ -292,7 +292,7 @@ class _UserSummaryScreenState extends State<UserSummaryScreen> {
                         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
-                      gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withOpacity(0.05), strokeWidth: 1)),
+                      gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (val) => FlLine(color: VelocityColors.textDim.withValues(alpha: 0.05), strokeWidth: 1)),
                       borderData: FlBorderData(show: false),
                       barGroups: filteredRuns.asMap().entries.map((entry) {
                         final idx = entry.key;
@@ -302,10 +302,10 @@ class _UserSummaryScreenState extends State<UserSummaryScreen> {
                           barRods: [
                             BarChartRodData(
                               toY: t,
-                              color: t == fastest ? VelocityColors.primary : VelocityColors.secondary.withOpacity(0.8),
+                              color: t == fastest ? VelocityColors.primary : VelocityColors.secondary.withValues(alpha: 0.8),
                               width: 8,
                               borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
-                              backDrawRodData: BackgroundBarChartRodData(show: true, toY: slowest + (slowest * 0.1), color: VelocityColors.black.withOpacity(0.2)),
+                              backDrawRodData: BackgroundBarChartRodData(show: true, toY: slowest + (slowest * 0.1), color: VelocityColors.black.withValues(alpha: 0.2)),
                             ),
                           ],
                         );
@@ -327,7 +327,7 @@ class _UserSummaryScreenState extends State<UserSummaryScreen> {
       decoration: BoxDecoration(
         color: VelocityColors.surfaceLight,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: VelocityColors.textDim.withOpacity(0.1)),
+        border: Border.all(color: VelocityColors.textDim.withValues(alpha: 0.1)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(

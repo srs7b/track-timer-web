@@ -143,7 +143,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  border: Border.all(color: _isTyping ? VelocityColors.primary : VelocityColors.textDim.withOpacity(0.3)),
+                  border: Border.all(color: _isTyping ? VelocityColors.primary : VelocityColors.textDim.withValues(alpha: 0.3)),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -227,7 +227,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: VelocityCard(
-        borderColor: isAssistant ? VelocityColors.primary.withOpacity(0.1) : Colors.transparent,
+        borderColor: isAssistant ? VelocityColors.primary.withValues(alpha: 0.1) : Colors.transparent,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,7 +285,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: VelocityColors.surfaceLight,
-        border: Border(top: BorderSide(color: VelocityColors.textDim.withOpacity(0.1))),
+        border: Border(top: BorderSide(color: VelocityColors.textDim.withValues(alpha: 0.1))),
       ),
       child: SafeArea(
         child: Row(
@@ -297,7 +297,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 style: VelocityTextStyles.terminal.copyWith(color: VelocityColors.textBody, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'ENTER COMMAND...',
-                  hintStyle: VelocityTextStyles.terminal.copyWith(color: VelocityColors.textDim.withOpacity(0.5), fontSize: 13),
+                  hintStyle: VelocityTextStyles.terminal.copyWith(color: VelocityColors.textDim.withValues(alpha: 0.5), fontSize: 13),
                   border: InputBorder.none,
                 ),
                 onSubmitted: (_) => _handleSendMessage(),

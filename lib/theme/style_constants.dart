@@ -57,7 +57,7 @@ class VelocityTextStyles {
 class VelocityGlow {
   static List<BoxShadow> green(double radius) => [
         BoxShadow(
-          color: VelocityColors.primary.withOpacity(0.3),
+          color: VelocityColors.primary.withValues(alpha: 0.3),
           blurRadius: radius,
           spreadRadius: 2,
         ),
@@ -65,7 +65,7 @@ class VelocityGlow {
 
   static List<BoxShadow> purple(double radius) => [
         BoxShadow(
-          color: VelocityColors.accent.withOpacity(0.3),
+          color: VelocityColors.accent.withValues(alpha: 0.3),
           blurRadius: radius,
           spreadRadius: 2,
         ),

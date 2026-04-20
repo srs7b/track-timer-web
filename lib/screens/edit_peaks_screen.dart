@@ -124,7 +124,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
                     extraLinesData: ExtraLinesData(
                       verticalLines: _currentGateOffsets.map((ms) => VerticalLine(
                         x: ms / 1000.0,
-                        color: VelocityColors.primary.withOpacity(0.4),
+                        color: VelocityColors.primary.withValues(alpha: 0.4),
                         strokeWidth: 2,
                         dashArray: [4, 4],
                       )).toList(),
@@ -174,7 +174,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: VelocityColors.primary.withOpacity(0.1),
+                            color: VelocityColors.primary.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Center(child: Text('${index + 1}', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary, fontSize: 12))),
