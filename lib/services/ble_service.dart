@@ -292,8 +292,24 @@ class BleService {
         if (parts.length >= 2) {
           int? timestamp = int.tryParse(parts[1].trim());
           if (timestamp != null) {
-            // Convert micros to ms and add to buffer
+            // 1. Drop startup artifacts or extreme noise (e.g., hits under 100ms)
+            if (timestamp < 100000) {
+              _statusController.add("NOISE FILTERED: $rawString");
+              return;
+            }
+
             int ms = (timestamp / 1000).round();
+            
+            // 2. Blanking Period: Drop redundant triggers (e.g., trailing legs/arms)
+            // If this hit is within 500ms of the previous hit, it's likely the same gate crossing.
+            if (_sessionBuffer.isNotEmpty) {
+              int lastMs = _sessionBuffer.last;
+              if ((ms - lastMs).abs() < 500) {
+                _statusController.add("DUPLICATE DROPPED: $rawString");
+                return;
+              }
+            }
+
             _addHit(ms);
           }
         }
