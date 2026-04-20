@@ -107,40 +107,11 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
     double maxTime = times.isNotEmpty ? times.last : 0.0;
     
     // Interpolate for smooth graph (0.05s resolution)
-    for (double t = 0; t <= maxTime; t += 0.05) {
-      // Find the segment containing time t
-      int segmentIdx = times.indexWhere((point) => point >= t) - 1;
-      if (segmentIdx < 0) segmentIdx = 0;
-      if (segmentIdx >= vels.length) segmentIdx = vels.length - 1;
-
-      double weight = 0;
-      if (segmentIdx < times.length - 1) {
-        double range = times[segmentIdx + 1] - times[segmentIdx];
-        if (range > 0) {
-          weight = (t - times[segmentIdx]) / range;
-        }
-      }
-
-      // Velocity Interp
-      double v1 = vels[segmentIdx];
-      double v2 = segmentIdx + 1 < vels.length ? vels[segmentIdx + 1] : v1;
-      velSpots.add(FlSpot(t, v1 + (v2 - v1) * weight));
-
-      // Accel Interp
-      double a1 = accels[segmentIdx];
-      double a2 = segmentIdx + 1 < accels.length ? accels[segmentIdx + 1] : a1;
-      accelSpots.add(FlSpot(t, a1 + (a2 - a1) * weight));
-
-      // Position Interp
-      double p1 = positions[segmentIdx];
-      double p2 = segmentIdx + 1 < positions.length ? positions[segmentIdx + 1] : p1;
-      posSpots.add(FlSpot(t, p1 + (p2 - p1) * weight));
+    for (int i = 0; i < times.length; i++) {
+      if (i < positions.length) posSpots.add(FlSpot(times[i], positions[i]));
+      if (i < vels.length) velSpots.add(FlSpot(times[i], vels[i]));
+      if (i < accels.length) accelSpots.add(FlSpot(times[i], accels[i]));
     }
-
-    // Add exactly the last point for accuracy
-    posSpots.add(FlSpot(maxTime, positions.last));
-    velSpots.add(FlSpot(maxTime, vels.last));
-    accelSpots.add(FlSpot(maxTime, accels.last));
 
     return _ComparisonSeries(
       id: id,
@@ -490,6 +461,7 @@ class _ComparisonScreenState extends State<ComparisonScreen> {
         spots: spots,
         color: s.color,
         isCurved: true,
+        curveSmoothness: 0.35,
         barWidth: 3,
         dotData: const FlDotData(show: false),
         belowBarData: BarAreaData(show: true, color: s.color.withOpacity(0.05)),

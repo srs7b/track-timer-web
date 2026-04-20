@@ -26,7 +26,11 @@ class _RecordScreenState extends State<RecordScreen> {
   String _selectedSurface = 'Synthetic Track (Outdoor)';
 
   BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
+  BleDeviceStatus _deviceStatus = BleDeviceStatus.disconnected;
   String _statusMsg = "READY";
+  DateTime? _lastHeartbeat;
+  bool _heartbeatPulse = false;
+  int _hitCount = 0;
 
   StreamSubscription? _connectionSub;
 
@@ -57,6 +61,27 @@ class _RecordScreenState extends State<RecordScreen> {
 
     _bleService.statusMessage.listen((msg) {
       if (mounted) setState(() => _statusMsg = msg);
+    });
+
+    _bleService.deviceStatus.listen((status) {
+      if (mounted) setState(() => _deviceStatus = status);
+    });
+
+    _bleService.heartbeatStream.listen((time) {
+      if (mounted) {
+        setState(() {
+          _lastHeartbeat = time;
+          _heartbeatPulse = true;
+        });
+        // Briefly show the pulse
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) setState(() => _heartbeatPulse = false);
+        });
+      }
+    });
+
+    _bleService.hitCount.listen((count) {
+      if (mounted) setState(() => _hitCount = count);
     });
   }
 
@@ -212,10 +237,18 @@ class _RecordScreenState extends State<RecordScreen> {
                     title: Text(name, style: VelocityTextStyles.body),
                     subtitle: Text(r.device.remoteId.toString(), style: VelocityTextStyles.dimBody.copyWith(fontSize: 10)),
                     trailing: const Icon(Icons.link, color: VelocityColors.primary),
-                    onTap: () {
+                    onTap: () async {
                       _bleService.stopScan();
-                      _bleService.connectToDevice(r.device);
                       Navigator.pop(context);
+                      
+                      // Sequential LightBlue-style handshake
+                      try {
+                        await _bleService.connectToDevice(r.device);
+                        // Brief pause between connect and discover
+                        await _bleService.prepareHardware();
+                      } catch (e) {
+                        debugPrint("Handshake failed: $e");
+                      }
                     },
                   );
                 },
@@ -254,10 +287,51 @@ class _RecordScreenState extends State<RecordScreen> {
                 Navigator.pop(context);
               },
             )),
+            ListTile(
+              title: Center(child: Text('OTHER (MANUAL)', style: VelocityTextStyles.heading.copyWith(fontSize: 18, color: _selectedDistance > 400 || (_selectedDistance != 100 && _selectedDistance != 200 && _selectedDistance != 400) ? VelocityColors.primary : VelocityColors.textBody))),
+              onTap: () {
+                Navigator.pop(context);
+                _showCustomDistanceDialog();
+              },
+            ),
           ],
         ),
       ),
     );
+  }
+
+  void _showCustomDistanceDialog() async {
+    final controller = TextEditingController(text: _selectedDistance.toString());
+    final bool? saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: VelocityColors.surfaceLight,
+        title: Text('SET CUSTOM DISTANCE (M)', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary)),
+        content: TextField(
+          controller: controller,
+          style: VelocityTextStyles.body,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'TOTAL DISTANCE',
+            labelStyle: VelocityTextStyles.dimBody,
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: VelocityColors.textDim)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: VelocityColors.primary)),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('CANCEL', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textDim))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('SET', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary))),
+        ],
+      ),
+    );
+
+    if (saved == true) {
+      int? dist = int.tryParse(controller.text);
+      if (dist != null) {
+        setState(() => _selectedDistance = dist);
+      }
+    }
   }
 
   void _showSurfacePicker() {
@@ -314,8 +388,10 @@ class _RecordScreenState extends State<RecordScreen> {
                           const SizedBox(height: 12),
                           StatusIndicator(
                             label: 'BLE HARDWARE',
-                            value: isConnected ? (_bleService.connectedDevice?.platformName ?? 'CHRONO-GATE_01') : 'DISCONNECTED',
-                            active: isConnected,
+                            value: _deviceStatus == BleDeviceStatus.ready 
+                              ? (_bleService.connectedDevice?.platformName ?? 'TRACKNODE_01') 
+                              : _deviceStatus.name.toUpperCase(),
+                            active: _deviceStatus == BleDeviceStatus.ready,
                           ),
                         ],
                       ),
@@ -334,8 +410,8 @@ class _RecordScreenState extends State<RecordScreen> {
                             const SizedBox(height: 12),
                             StatusIndicator(
                               label: 'ACTIVE SESSION',
-                              value: isConnected ? 'READY TO STOP' : 'OFFLINE',
-                              active: false, // Don't glow red
+                              value: _hitCount > 0 ? '$_hitCount GATES CROSSED' : (isConnected ? 'READY TO STOP' : 'OFFLINE'),
+                              active: _hitCount > 0, // Glow when data is coming in
                             ),
                           ],
                         ),
@@ -415,8 +491,8 @@ class _RecordScreenState extends State<RecordScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: VelocityButton(
-                label: isConnected ? 'START SESSION' : 'HARDWARE OFFLINE',
-                onPressed: isConnected ? () async {
+                label: _deviceStatus == BleDeviceStatus.ready ? 'START SESSION' : 'HARDWARE NOT READY',
+                onPressed: _deviceStatus == BleDeviceStatus.ready ? () async {
                   await _bleService.sendStartCommand();
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -467,15 +543,47 @@ class _RecordScreenState extends State<RecordScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: _statusMsg.contains("ERROR") ? Colors.red : (_statusMsg.contains("SUCCESS") ? Colors.green : Colors.blue),
+                        color: _statusMsg.contains("ERROR") 
+                          ? Colors.red 
+                          : (_deviceStatus == BleDeviceStatus.ready ? (_heartbeatPulse ? VelocityColors.primary : Colors.green) : Colors.blue),
                         shape: BoxShape.circle,
+                        boxShadow: _heartbeatPulse ? [
+                          BoxShadow(color: VelocityColors.primary.withOpacity(0.5), blurRadius: 8, spreadRadius: 2)
+                        ] : null,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        "DIAGNOSTIC LOG: $_statusMsg",
-                        style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "DIAGNOSTIC LOG: $_statusMsg",
+                                style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim),
+                              ),
+                              if (_deviceStatus != BleDeviceStatus.disconnected)
+                                InkWell(
+                                  onTap: () => _bleService.readData(),
+                                  child: Text(
+                                    "[FORCE READ]",
+                                    style: VelocityTextStyles.technical.copyWith(
+                                      fontSize: 9, 
+                                      color: VelocityColors.primary,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (_lastHeartbeat != null)
+                            Text(
+                              "LAST LIVE PING: ${_lastHeartbeat!.hour}:${_lastHeartbeat!.minute.toString().padLeft(2, '0')}:${_lastHeartbeat!.second.toString().padLeft(2, '0')}",
+                              style: VelocityTextStyles.technical.copyWith(fontSize: 8, color: VelocityColors.primary.withOpacity(0.5)),
+                            ),
+                        ],
                       ),
                     ),
                   ],

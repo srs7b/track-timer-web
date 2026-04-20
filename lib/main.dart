@@ -10,21 +10,38 @@ import 'theme/style_constants.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
+  // 1. Trap errors immediately
+  FlutterError.onError = (details) {
+    debugPrint("EXCEPTION CAUGHT BY FLUTTER: ${details.exception}");
+    debugPrint("STACK: ${details.stack}");
+  };
+
   WidgetsFlutterBinding.ensureInitialized();
   
-  if (kIsWeb) {
-    databaseFactory = databaseFactoryFfiWeb;
-  } else if (defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.linux ||
-      defaultTargetPlatform == TargetPlatform.macOS) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
-
-  // Seed data for prototype
-  await SeedDataService.seedIfNecessary();
-
+  // Start the UI immediately
   runApp(const TrackTimerApp());
+
+  // Database setup logic
+  try {
+    if (kIsWeb) {
+      databaseFactory = databaseFactoryFfiWeb;
+    } else if (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+    
+    // RESTORED: Seeding for the demo
+    SeedDataService.seedIfNecessary();
+    _statusLog("DATABASE & SYSTEM READY");
+  } catch (e) {
+    debugPrint("CRITICAL STARTUP ERROR: $e");
+  }
+}
+
+void _statusLog(String msg) {
+  debugPrint("BOOT_LOG: $msg");
 }
 
 class TrackTimerApp extends StatelessWidget {

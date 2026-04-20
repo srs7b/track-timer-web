@@ -1,4 +1,4 @@
-import 'dart:math';
+// No math needed
 
 class MockDataService {
   /// Generates a realistic set of timing offsets for an athlete
@@ -13,7 +13,7 @@ class MockDataService {
     int numGates = 3,
   }) {
     List<int> trueGateOffsets = [];
-    final random = Random();
+    // No random needed
     // (Wait, actually I removed the block that used random). I'll just remove the variable.
 
     // Adjusted proportions for numGates:

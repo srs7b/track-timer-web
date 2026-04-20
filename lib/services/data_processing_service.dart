@@ -22,7 +22,8 @@ class DataProcessingService {
       }
 
       if (!nodeEarliestHits.containsKey(nodeName) || timePassed < nodeEarliestHits[nodeName]!) {
-        nodeEarliestHits[nodeName] = timePassed;
+        // Convert Arduino micros() to ms for the app engine
+        nodeEarliestHits[nodeName] = (timePassed / 1000).round();
       }
     }
 

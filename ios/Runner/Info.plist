@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Track.Time needs Bluetooth access to connect to your TrackNode hardware for laser timing.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Track.Time needs Bluetooth access to connect to your TrackNode hardware for laser timing.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Track.Time needs location access to discover nearby hardware nodes.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Track.Time needs location access to discover nearby hardware nodes.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

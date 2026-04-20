@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/run_model.dart';
 import '../services/database_service.dart';
+import '../theme/style_constants.dart';
+import '../widgets/velocity_card.dart';
 
 class EditPeaksScreen extends StatefulWidget {
   final Run run;
@@ -18,7 +20,6 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
   @override
   void initState() {
     super.initState();
-    // Copy the existing offsets so we can modify them
     _currentGateOffsets = List.from(widget.run.gateTimeOffsets);
   }
 
@@ -26,7 +27,8 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
     if (_currentGateOffsets.length <= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cannot have less than 2 gates (Start & End)!'),
+          backgroundColor: Colors.redAccent,
+          content: Text('MINIMUM 2 GATES REQUIRED (START/FINISH)'),
         ),
       );
       return;
@@ -38,9 +40,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
   }
 
   Future<void> _saveChanges() async {
-    // Sort just in case editing messed up temporal order
     _currentGateOffsets.sort();
-
     final updatedRun = Run(
       id: widget.run.id,
       name: widget.run.name,
@@ -53,21 +53,7 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
     );
 
     await DatabaseService().saveRun(updatedRun);
-
-    if (mounted) {
-      Navigator.pop(context, updatedRun);
-    }
-  }
-
-  // Draw vertical lines where the peaks currently are
-  List<VerticalLine> _getPeakLines() {
-    return _currentGateOffsets.map((offsetMs) {
-      return VerticalLine(
-        x: offsetMs / 1000.0,
-        color: Colors.blueAccent.withValues(alpha: 0.8),
-        strokeWidth: 3,
-      );
-    }).toList();
+    if (mounted) Navigator.pop(context, updatedRun);
   }
 
   @override
@@ -77,110 +63,150 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
         : 10.0;
 
     return Scaffold(
+      backgroundColor: VelocityColors.black,
       appBar: AppBar(
-        title: const Text('Review Gates'),
+        title: Text('REVIEW GATE PEAKS', style: VelocityTextStyles.technical.copyWith(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: _saveChanges,
-            child: const Text(
-              'Save',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: Text('SAVE', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary)),
           ),
         ],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Remove false hits. Expected Gates: 5, Found: ${_currentGateOffsets.length}',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: _currentGateOffsets.length == 5
-                    ? Colors.green
-                    : Colors.red,
-              ),
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('TELEMETRY CALIBRATION', style: VelocityTextStyles.subHeading.copyWith(letterSpacing: 2)),
+                const SizedBox(height: 8),
+                Text(
+                  'EXPECTED: ${widget.run.nodeDistances.length + 1} GATES · DETECTED: ${_currentGateOffsets.length}',
+                  style: VelocityTextStyles.technical.copyWith(
+                    fontSize: 10,
+                    color: _currentGateOffsets.length == (widget.run.nodeDistances.length + 1) ? VelocityColors.primary : Colors.redAccent,
+                  ),
+                ),
+              ],
             ),
           ),
 
-          // Visual Timeline Chart
+          // Timeline Chart
           SizedBox(
-            height: 120,
+            height: 160,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-              child: LineChart(
-                LineChartData(
-                  gridData: const FlGridData(show: false),
-                  titlesData: FlTitlesData(
-                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 22,
-                        interval: 2.0,
-                        getTitlesWidget: (val, meta) => Text('${val.toInt()}s', style: const TextStyle(fontSize: 10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: VelocityCard(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                child: LineChart(
+                  LineChartData(
+                    gridData: const FlGridData(show: false),
+                    titlesData: FlTitlesData(
+                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          interval: 2.0,
+                          getTitlesWidget: (val, meta) => Text('${val.toInt()}s', style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+                        ),
                       ),
                     ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  minX: 0,
-                  maxX: maxTime,
-                  minY: 0,
-                  maxY: 1,
-                  extraLinesData: ExtraLinesData(
-                    verticalLines: _getPeakLines(),
-                    horizontalLines: [
-                      HorizontalLine(y: 0.5, color: Colors.grey.shade300, strokeWidth: 1),
+                    borderData: FlBorderData(show: false),
+                    minX: 0,
+                    maxX: maxTime,
+                    minY: 0,
+                    maxY: 1,
+                    extraLinesData: ExtraLinesData(
+                      verticalLines: _currentGateOffsets.map((ms) => VerticalLine(
+                        x: ms / 1000.0,
+                        color: VelocityColors.primary.withOpacity(0.4),
+                        strokeWidth: 2,
+                        dashArray: [4, 4],
+                      )).toList(),
+                    ),
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: _currentGateOffsets.map((ms) => FlSpot(ms / 1000.0, 0.5)).toList(),
+                        color: Colors.transparent,
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, p, bar, i) => FlDotCirclePainter(
+                            radius: 6,
+                            color: VelocityColors.primary,
+                            strokeWidth: 2,
+                            strokeColor: VelocityColors.black,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: _currentGateOffsets.map((ms) => FlSpot(ms / 1000.0, 0.5)).toList(),
-                      color: Colors.transparent, // We only want the dots
-                      barWidth: 0,
-                      dotData: const FlDotData(
-                        show: true,
-                        getDotPainter: _getDotPainter,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
           ),
 
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text('DETECTED GATE HITS', style: VelocityTextStyles.dimBody.copyWith(fontSize: 10, letterSpacing: 1.5)),
+          ),
+          
           Expanded(
             child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
               itemCount: _currentGateOffsets.length,
               itemBuilder: (context, index) {
                 int offsetMs = _currentGateOffsets[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.blueAccent,
-                    child: Text(
-                      '${index + 1}',
-                      style: const TextStyle(color: Colors.white),
+                double split = index > 0 ? (offsetMs - _currentGateOffsets[index-1]) / 1000.0 : 0.0;
+                
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: VelocityCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: VelocityColors.primary.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(child: Text('${index + 1}', style: VelocityTextStyles.technical.copyWith(color: VelocityColors.primary, fontSize: 12))),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                index == 0 ? 'START TRIGGER' : (index == _currentGateOffsets.length - 1 ? 'FINISH GATE' : 'SPLIT GATE'),
+                                style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.primary),
+                              ),
+                              Text('TIME: ${(offsetMs / 1000.0).toStringAsFixed(3)}s', style: VelocityTextStyles.body.copyWith(fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        if (index > 0)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('SPLIT', style: VelocityTextStyles.dimBody.copyWith(fontSize: 8)),
+                              Text('+${split.toStringAsFixed(2)}s', style: VelocityTextStyles.body.copyWith(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        const SizedBox(width: 16),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.redAccent, size: 18),
+                          onPressed: () => _removePeak(index),
+                        ),
+                      ],
                     ),
-                  ),
-                  title: Text(
-                    'Gate Hit at ${(offsetMs / 1000.0).toStringAsFixed(3)}s',
-                  ),
-                  subtitle: index > 0 
-                    ? Text('Split: ${((offsetMs - _currentGateOffsets[index-1]) / 1000.0).toStringAsFixed(3)}s')
-                    : const Text('Start Gate'),
-                  trailing: IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.redAccent,
-                    ),
-                    onPressed: () => _removePeak(index),
                   ),
                 );
               },
@@ -190,13 +216,4 @@ class _EditPeaksScreenState extends State<EditPeaksScreen> {
       ),
     );
   }
-}
-
-FlDotPainter _getDotPainter(FlSpot spot, double xPercentage, LineChartBarData bar, int index) {
-  return FlDotCirclePainter(
-    radius: 6,
-    color: Colors.blue,
-    strokeWidth: 2,
-    strokeColor: Colors.white,
-  );
 }

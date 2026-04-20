@@ -193,7 +193,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_run.gateTimeOffsets.length != 5)
+            if (_run.gateTimeOffsets.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Container(
@@ -209,7 +209,7 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'SENSORS MISMATCH: Expected 5 gates, detected ${_run.gateTimeOffsets.length}.',
+                          'DATA ERROR: Unexpected node structure detected.',
                           style: VelocityTextStyles.technical.copyWith(color: Colors.redAccent, fontSize: 10),
                         ),
                       ),
@@ -241,16 +241,18 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
             ),
             
             const SizedBox(height: 32),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: VelocityButton(
-                label: 'ANALYZE WITH COACH',
-                icon: Icons.psychology,
-                onPressed: () {
-                  final nav = Provider.of<NavigationProvider>(context, listen: false);
-                  nav.setTab(4, runToAnalyze: _run);
-                  Navigator.pop(context);
-                },
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 48),
+                child: VelocityButton(
+                  label: 'ANALYZE WITH COACH',
+                  icon: Icons.psychology,
+                  onPressed: () {
+                    final nav = Provider.of<NavigationProvider>(context, listen: false);
+                    nav.setTab(4, runToAnalyze: _run);
+                    Navigator.pop(context);
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 48),
@@ -395,12 +397,13 @@ class _RunDetailsScreenState extends State<RunDetailsScreen> {
           LineChartBarData(
             spots: spots,
             isCurved: true,
+            curveSmoothness: 0.35,
             color: lineColor,
             barWidth: 4,
             dotData: const FlDotData(show: true),
             belowBarData: BarAreaData(
               show: true,
-              color: lineColor.withValues(alpha: 0.2),
+              color: lineColor.withOpacity(0.2),
             ),
           ),
         ],

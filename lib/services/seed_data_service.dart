@@ -19,10 +19,10 @@ class SeedDataService {
     // 1. Ensure Athletes
     final athletes = [
       {'id': 'user_1', 'name': 'The Big Yahu', 'gender': 'M'},
-      {'id': 'user_2', 'name': 'Sonic Sarah', 'gender': 'F'},
-      {'id': 'user_3', 'name': 'Rocket Rick', 'gender': 'M'},
-      {'id': 'user_4', 'name': 'Turbo Tyler', 'gender': 'M'},
-      {'id': 'user_5', 'name': 'Dash Diana', 'gender': 'F'},
+      {'id': 'user_2', 'name': 'Solána Imani Rowe', 'gender': 'F'},
+      {'id': 'user_3', 'name': 'Shéyaa Bin Abraham-Joseph', 'gender': 'M'},
+      {'id': 'user_4', 'name': 'Sean Combs', 'gender': 'M'},
+      {'id': 'user_5', 'name': 'Belcalis Marlenis Almánzar', 'gender': 'F'},
     ];
 
     for (var a in athletes) {
@@ -70,12 +70,13 @@ class SeedDataService {
 
         final mockData = MockDataService.generateMockRunData(
           durationMs: durationMs,
+          numGates: 3,
         );
         List<int> offsets = mockData['trueGateOffsets'] as List<int>;
 
-        // Scale distances for 4 segments
-        double segDist = dist / 4.0;
-        List<double> nodeDistances = [segDist, segDist, segDist, segDist];
+        // Scale distances for 2 segments (3 gates)
+        double segDist = dist / 2.0;
+        List<double> nodeDistances = [segDist, segDist];
 
         final run = Run(
           id: 'seed_${userId}_$i',

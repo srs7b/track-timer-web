@@ -35,8 +35,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   String _genderSortFilter = 'All';
   String _activeSortMetric = '100M'; // 100M, 200M, 400M, RUNS
   late StreamSubscription<void> _dbSub;
-  double? _globalBest100, _globalBest200, _globalBest400;
-  int _globalMaxRuns = 0;
 
   @override
   void initState() {
@@ -93,14 +91,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     }
 
     _sortRows(calculatedRows, _activeSortMetric);
-
+    
     if (mounted) {
       setState(() {
         _rows = calculatedRows;
-        _globalBest100 = g100;
-        _globalBest200 = g200;
-        _globalBest400 = g400;
-        _globalMaxRuns = gRuns;
         _isLoading = false;
       });
     }
@@ -202,6 +196,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       displayedRows = _rows.where((r) => r.user.gender == _genderSortFilter).toList();
     }
 
+    // Dynamic Best Calculation for the filtered group
+    double? currentBest100, currentBest200, currentBest400;
+    int currentMaxRuns = 0;
+    const double infinity = 999999.0;
+
+    for (var r in displayedRows) {
+      if (r.best100 != null && r.best100! < (currentBest100 ?? infinity)) currentBest100 = r.best100;
+      if (r.best200 != null && r.best200! < (currentBest200 ?? infinity)) currentBest200 = r.best200;
+      if (r.best400 != null && r.best400! < (currentBest400 ?? infinity)) currentBest400 = r.best400;
+      if (r.totalRuns > currentMaxRuns) currentMaxRuns = r.totalRuns;
+    }
+
     return Scaffold(
       backgroundColor: VelocityColors.black,
       appBar: AppBar(
@@ -246,7 +252,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     itemCount: displayedRows.length,
                     itemBuilder: (context, index) {
                       final row = displayedRows[index];
-                      return _buildRankItem(index + 1, row);
+                      return _buildRankItem(
+                        index + 1, 
+                        row, 
+                        currentBest100, 
+                        currentBest200, 
+                        currentBest400, 
+                        currentMaxRuns,
+                      );
                     },
                   ),
                 ),
@@ -323,7 +336,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildRankItem(int rank, _LeaderboardRow row) {
+  Widget _buildRankItem(
+    int rank, 
+    _LeaderboardRow row,
+    double? best100,
+    double? best200,
+    double? best400,
+    int maxRuns,
+  ) {
     return InkWell(
       onTap: () {
         Navigator.push(
@@ -346,10 +366,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 ],
               ),
             ),
-            _buildMetricValue(row.best100, active: _activeSortMetric == '100M', isGlobalBest: row.best100 != null && row.best100 == _globalBest100),
-            _buildMetricValue(row.best200, active: _activeSortMetric == '200M', isGlobalBest: row.best200 != null && row.best200 == _globalBest200),
-            _buildMetricValue(row.best400, active: _activeSortMetric == '400M', isGlobalBest: row.best400 != null && row.best400 == _globalBest400),
-            _buildMetricValue(row.totalRuns.toDouble(), isInt: true, active: _activeSortMetric == 'RUNS', isGlobalBest: row.totalRuns > 0 && row.totalRuns == _globalMaxRuns),
+            _buildMetricValue(row.best100, active: _activeSortMetric == '100M', isGlobalBest: row.best100 != null && row.best100 == best100),
+            _buildMetricValue(row.best200, active: _activeSortMetric == '200M', isGlobalBest: row.best200 != null && row.best200 == best200),
+            _buildMetricValue(row.best400, active: _activeSortMetric == '400M', isGlobalBest: row.best400 != null && row.best400 == best400),
+            _buildMetricValue(row.totalRuns.toDouble(), isInt: true, active: _activeSortMetric == 'RUNS', isGlobalBest: row.totalRuns > 0 && row.totalRuns == maxRuns),
           ],
         ),
       ),
