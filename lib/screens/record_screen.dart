@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -115,8 +116,7 @@ class _RecordScreenState extends State<RecordScreen> {
       
       setState(() => _countdownValue = i);
       try {
-        // AssetSource in audioplayers 6.x expects path relative to assets folder
-        await _audioPlayer.play(AssetSource('audio/beep.mp3'));
+        await _playAssetSafe('audio/beep.mp3');
       } catch (e) {
         debugPrint("Audio Error: $e");
         if (mounted) setState(() => _statusMsg = "AUDIO ERROR: $e");
@@ -130,9 +130,8 @@ class _RecordScreenState extends State<RecordScreen> {
     setState(() => _countdownValue = 0);
 
     // 2. Fire audio shot immediately (non-blocking)
-    _audioPlayer.play(AssetSource('audio/race_start.wav')).catchError((e) {
+    _playAssetSafe('audio/race_start.wav').catchError((e) {
       debugPrint("Shot Audio Error: $e");
-      return null;
     });
     
     // 3. Trigger BLE Start command immediately (non-blocking)
@@ -151,6 +150,97 @@ class _RecordScreenState extends State<RecordScreen> {
     if (mounted) {
       setState(() => _isCountingDown = false);
     }
+  }
+
+  /// Robust audio player that handles Web path discrepancies
+  Future<void> _playAssetSafe(String path) async {
+    try {
+      // Strategy 1: Standard AssetSource (relative to assets/)
+      await _audioPlayer.play(AssetSource(path));
+    } catch (e) {
+      if (kIsWeb) {
+        debugPrint("Primary Audio Load Failed, trying strategy 2: $e");
+        try {
+          // Strategy 2: Explicit assets/ prefix (double assets in build)
+          await _audioPlayer.play(AssetSource('assets/$path'));
+        } catch (e2) {
+          debugPrint("Secondary Audio Load Failed: $e2");
+          throw e2;
+        }
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  void _showSystemHealthDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: VelocityColors.surface,
+        title: Text("SYSTEM HEALTH", style: VelocityTextStyles.subHeading),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHealthItem("Platform", kIsWeb ? "Web (Chrome)" : "Native"),
+            if (kIsWeb) _buildHealthItem("Base Href", Uri.base.path),
+            _buildHealthItem("Device Status", _deviceStatus.toString()),
+            const Divider(color: Colors.white10),
+            Text("AUDIO PATH TEST", style: VelocityTextStyles.technical.copyWith(fontSize: 12, color: VelocityColors.primary)),
+            const SizedBox(height: 8),
+            _buildPathTestButton("Strategy 1 (audio/...)", "audio/beep.mp3"),
+            _buildPathTestButton("Strategy 2 (assets/audio/...)", "assets/audio/beep.mp3"),
+            const SizedBox(height: 12),
+            Text("If Strategy 1 works locally but Strategy 2 is needed on Web, it confirms the double-assets nesting issue.", 
+                 style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("CLOSE", style: VelocityTextStyles.body.copyWith(color: VelocityColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text("$label: ", style: VelocityTextStyles. technical.copyWith(color: VelocityColors.textDim, fontSize: 11)),
+          Text(value, style: VelocityTextStyles.technical.copyWith(color: VelocityColors.textBody, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPathTestButton(String label, String path) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: VelocityColors.surfaceLight),
+          onPressed: () async {
+            try {
+              await _audioPlayer.play(AssetSource(path));
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PLAYBACK SUCCESS: $path")));
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("FAILED: $e"), backgroundColor: Colors.red));
+              }
+            }
+          },
+          child: Text(label, style: VelocityTextStyles.technical.copyWith(fontSize: 10)),
+        ),
+      ),
+    );
   }
 
   void _handleFinalTiming(List<int> offsets) {
@@ -744,10 +834,22 @@ class _RecordScreenState extends State<RecordScreen> {
                               InkWell(
                                 onTap: _startCountdownSequence,
                                 child: Text(
-                                  "[DEBUG: TEST AUDIO]",
+                                  "[TEST AUDIO]",
                                   style: VelocityTextStyles.technical.copyWith(
                                     fontSize: 9, 
                                     color: Colors.orangeAccent,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              InkWell(
+                                onTap: _showSystemHealthDialog,
+                                child: Text(
+                                  "[HEALTH]",
+                                  style: VelocityTextStyles.technical.copyWith(
+                                    fontSize: 9, 
+                                    color: Colors.cyanAccent,
                                     decoration: TextDecoration.underline,
                                   ),
                                 ),
