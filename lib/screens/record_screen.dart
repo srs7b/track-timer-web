@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:js' as js; // For "Nuclear" JS diagnostics
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -185,14 +186,26 @@ class _RecordScreenState extends State<RecordScreen> {
           children: [
             _buildHealthItem("Platform", kIsWeb ? "Web (Chrome)" : "Native"),
             if (kIsWeb) _buildHealthItem("Base Href", Uri.base.path),
+            if (kIsWeb) _buildHealthItem("Full Location", Uri.base.toString()),
             _buildHealthItem("Device Status", _deviceStatus.toString()),
             const Divider(color: Colors.white10),
-            Text("AUDIO PATH TEST", style: VelocityTextStyles.technical.copyWith(fontSize: 12, color: VelocityColors.primary)),
+            Text("AUDIO PATH TESTS", style: VelocityTextStyles.technical.copyWith(fontSize: 12, color: VelocityColors.primary)),
             const SizedBox(height: 8),
-            _buildPathTestButton("Strategy 1 (audio/...)", "audio/beep.mp3"),
-            _buildPathTestButton("Strategy 2 (assets/audio/...)", "assets/audio/beep.mp3"),
+            _buildPathTestButton("Strategy 1 (audio/beep.mp3)", "AssetSource", "audio/beep.mp3"),
+            _buildPathTestButton("Strategy 2 (assets/audio/beep.mp3)", "AssetSource", "assets/audio/beep.mp3"),
+            _buildPathTestButton("Strategy 3 (assets/assets/audio/beep.mp3)", "AssetSource", "assets/assets/audio/beep.mp3"),
+            const SizedBox(height: 8),
+            Text("WAV TESTS (More reliable on Web)", style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: Colors.orangeAccent)),
+            _buildPathTestButton("WAV (audio/race_start.wav)", "AssetSource", "audio/race_start.wav"),
+            _buildPathTestButton("WAV (assets/audio/race_start.wav)", "AssetSource", "assets/audio/race_start.wav"),
+            _buildPathTestButton("WAV (assets/assets/audio/race_start.wav)", "AssetSource", "assets/assets/audio/race_start.wav"),
+            const SizedBox(height: 8),
+            Text("NUCLEAR WEB TESTS", style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: Colors.redAccent)),
+            _buildPathTestButton("UrlSource (Relative)", "UrlSource", "assets/audio/race_start.wav"),
+            _buildPathTestButton("UrlSource (Nested)", "UrlSource", "assets/assets/audio/race_start.wav"),
+            _buildPathTestButton("Nuclear JS Test", "JSSource", "assets/assets/audio/race_start.wav"),
             const SizedBox(height: 12),
-            Text("If Strategy 1 works locally but Strategy 2 is needed on Web, it confirms the double-assets nesting issue.", 
+            Text("Note: Strategy 3 or Nested UrlSource is often required for GitHub Pages deployments.", 
                  style: VelocityTextStyles.technical.copyWith(fontSize: 10, color: VelocityColors.textDim)),
           ],
         ),
@@ -218,7 +231,7 @@ class _RecordScreenState extends State<RecordScreen> {
     );
   }
 
-  Widget _buildPathTestButton(String label, String path) {
+  Widget _buildPathTestButton(String label, String type, String path) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: SizedBox(
@@ -227,7 +240,25 @@ class _RecordScreenState extends State<RecordScreen> {
           style: ElevatedButton.styleFrom(backgroundColor: VelocityColors.surfaceLight),
           onPressed: () async {
             try {
-              await _audioPlayer.play(AssetSource(path));
+              if (type == "AssetSource") {
+                await _audioPlayer.play(AssetSource(path));
+              } else if (type == "UrlSource") {
+                // Resolve relative to the current location
+                final resolved = Uri.base.resolve(path).toString();
+                debugPrint("Testing UrlSource: $resolved");
+                await _audioPlayer.play(UrlSource(resolved));
+              } else if (type == "JSSource") {
+                if (kIsWeb) {
+                  // Direct HTML5 Audio Test via JS
+                  final resolved = Uri.base.resolve(path).toString();
+                  js.context.callMethod('eval', [
+                    "new Audio('$resolved').play();"
+                  ]);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("JS AUDIO INVOKED (Check console)")));
+                  return;
+                }
+              }
+              
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PLAYBACK SUCCESS: $path")));
               }
